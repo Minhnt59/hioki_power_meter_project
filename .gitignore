@@ -1,0 +1,50 @@
+# ==========================================
+# 1. PYTHON CACHE & COMPILED FILES
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==========================================
+# 2. VIRTUAL ENVIRONMENTS (Môi trường ảo)
+# ==========================================
+venv/
+env/
+.venv/
+env.bak/
+v/
+
+# ==========================================
+# 3. KẾT QUẢ ĐO KIỂM & LOG (Project Specific)
+# Bỏ qua các file sinh ra trong quá trình chạy app
+# ==========================================
+data/reports/*.csv
+data/reports/*.xlsx
+data/reports/*.html
+data/logs/*.log
+
+# Nếu bạn muốn giữ lại cấu trúc thư mục rỗng trên Git
+# nhưng không lấy file bên trong, hãy dùng ký tự ! 
+# (Bỏ comment 2 dòng dưới nếu cần)
+# !data/reports/.gitkeep
+# !data/logs/.gitkeep
+
+# ==========================================
+# 4. TÀI NGUYÊN TẠM THỜI / OS FILES
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# 5. IDEs & EDITORS (VS Code, PyCharm, v.v.)
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
