@@ -9,6 +9,7 @@ from datetime import datetime
 from core.hioki_controller import HiokiPW3336Controller
 from utils.html_exporter import HTMLExporter
 from tkinter import filedialog
+from gui.control_panels import DutControlWindow, RemoteConsoleWindow
 
 class MainWindow:
     def __init__(self, root):
@@ -52,7 +53,7 @@ class MainWindow:
         config_container = tk.Frame(self.root, bg=self.colors["bg_app"])
         config_container.pack(fill="x", padx=10, pady=10)
         
-        # DUT KHỐI
+        # DUT
         frame_dut = ttk.LabelFrame(config_container, text="DUT CONFIG", style='Modern.TLabelframe')
         frame_dut.pack(side="left", fill="both", expand=True, padx=(0, 5), ipady=5)
         dut_form = tk.Frame(frame_dut, bg=self.colors["bg_card"])
@@ -65,27 +66,32 @@ class MainWindow:
         dut_ctrl.pack(side="right", fill="y", padx=10, pady=5)
         self.lbl_dut_status = tk.Label(dut_ctrl, text="● STOPPED", font=("Helvetica", 10, "bold"), fg=self.colors["status_off"], bg=self.colors["bg_card"])
         self.lbl_dut_status.pack(pady=(5, 10))
-        tk.Button(dut_ctrl, text="DUT Control Panel", font=("Arial", 9), bg="#F3F4F6", command=self.open_dut_control).pack()
+        tk.Button(dut_ctrl, text="Connection", font=("Arial", 9), bg="#F3F4F6", command=self.open_dut_control).pack()
 
-        # POWER METER KHỐI
+        # POWER METER
         frame_meter = ttk.LabelFrame(config_container, text="METER CONFIG", style='Modern.TLabelframe')
         frame_meter.pack(side="left", fill="both", expand=True, padx=5, ipady=5)
         meter_form = tk.Frame(frame_meter, bg=self.colors["bg_card"])
         meter_form.pack(side="left", padx=5)
         
-        self.ent_ip = self.create_input_row(meter_form, "IP Address:", "192.168.1.10", 0)
-        self.ent_port = self.create_input_row(meter_form, "Port:", "3390", 1)
+        tk.Label(meter_form, text="Model:", bg=self.colors["bg_card"], font=("Helvetica", 9)).grid(row=0, column=0, padx=5, pady=3, sticky="w")
+        self.cb_model = ttk.Combobox(meter_form, values=["Hioki pw3336"], width=13)
+        self.cb_model.set("Hioki pw3336")
+        self.cb_model.grid(row=0, column=1, padx=5, pady=3)
+
+        self.ent_ip = self.create_input_row(meter_form, "IP Address:", "192.168.1.10", 1)
+        self.ent_port = self.create_input_row(meter_form, "Port:", "3390", 2)
         
         meter_ctrl = tk.Frame(frame_meter, bg=self.colors["bg_card"])
         meter_ctrl.pack(side="right", fill="y", padx=10, pady=5)
         self.lbl_meter_status = tk.Label(meter_ctrl, text="● DISCONNECTED", font=("Helvetica", 10, "bold"), fg=self.colors["status_off"], bg=self.colors["bg_card"])
         self.lbl_meter_status.pack(pady=(5, 10))
-        tk.Button(meter_ctrl, text="Remote Console", font=("Arial", 9), bg="#F3F4F6", command=self.open_meter_remote).pack()
+        tk.Button(meter_ctrl, text="Connection", font=("Arial", 9), bg="#F3F4F6", command=self.open_meter_remote).pack()
         self.var_sim_mode = tk.BooleanVar(value=True) # Mặc định bật chế độ giả lập để test
         tk.Checkbutton(meter_ctrl, text="Simulation Mode", variable=self.var_sim_mode, bg=self.colors["bg_card"], font=("Arial", 8, "italic")).pack()
         
-        # TEST INFO KHỐI
-        frame_test = ttk.LabelFrame(config_container, text="TEST SETTINGS", style='Modern.TLabelframe')
+        # MEASUREMENT INFO
+        frame_test = ttk.LabelFrame(config_container, text="MEASUREMENT SETTINGS", style='Modern.TLabelframe')
         frame_test.pack(side="left", fill="both", expand=True, padx=(5, 0), ipady=5)
         test_form = tk.Frame(frame_test, bg=self.colors["bg_card"])
         test_form.pack(side="left", padx=5)
@@ -119,12 +125,27 @@ class MainWindow:
         self.btn_export = tk.Button(toolbar, text="EXPORT REPORT", font=("Arial", 10, "bold"), bg="#374151", fg="white", relief="flat", width=15, command=self.export_html_report)
         self.btn_export.pack(side="right", padx=10, pady=5)
 
+        # 1. Thêm đồng hồ đếm ngược
+        self.lbl_countdown = tk.Label(toolbar, text="⏳ 00:00:00", font=("Courier New", 14, "bold"), bg="#1F1F1F", fg="#38BDF8")
+        self.lbl_countdown.pack(side="right", padx=20, pady=5)
+
         led_container = tk.Frame(dashboard_frame, bg=self.colors["led_bg"], padx=10, pady=10)
         led_container.pack(fill="x")
-        self.lbl_volt = self.create_hardware_led_row(led_container, "CH1", "DC", "VOLTAGE", "00.00", "V")
-        self.lbl_curr = self.create_hardware_led_row(led_container, "CH1", "DC", "CURRENT", "00.00", "A")
-        self.lbl_pwr  = self.create_hardware_led_row(led_container, "CH1", "DC", "POWER", "000.00", "W")
-        self.lbl_avg  = self.create_hardware_led_row(led_container, "AVG", "INT", "P-AVG", "000.00", "W")
+        self.lbl_ch_volt, self.lbl_volt = self.create_hardware_led_row(led_container, "CH1", "DC", "VOLTAGE", "00.00", "V")
+        self.lbl_ch_curr, self.lbl_curr = self.create_hardware_led_row(led_container, "CH1", "DC", "CURRENT", "00.00", "A")
+        self.lbl_ch_pwr, self.lbl_pwr  = self.create_hardware_led_row(led_container, "CH1", "DC", "POWER", "000.00", "W")
+        _, self.lbl_avg  = self.create_hardware_led_row(led_container, "AVG", "INT", "P-AVG", "000.00", "W")
+
+        # --- STATUS BAR (CẦN KHAI BÁO TRƯỚC TREEVIEW)---
+        self.status_bar = tk.Frame(self.root, bg=self.colors["primary"], height=30)
+        self.status_bar.pack(side="bottom", fill="x")
+        self.status_bar.pack_propagate(False)
+
+        tk.Label(self.status_bar, text="Ready", font=("Arial", 9), bg=self.colors["primary"], fg="white").pack(side="left", padx=10)
+
+        # 2. Label hiển thị đồng hồ thời gian thực
+        self.lbl_realtime = tk.Label(self.status_bar, text="System Time: --:--:--", font=("Arial", 16, "bold"), bg=self.colors["primary"], fg="white")
+        self.lbl_realtime.pack(side="right", padx=20)
 
         # --- DATA LOGGING TREEVIEW ---
         table_container = tk.Frame(self.root, bg=self.colors["bg_card"])
@@ -142,16 +163,71 @@ class MainWindow:
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+    
+        # Kích hoạt chạy đồng hồ thời gian thực ngay khi mở App
+        self.update_realtime_clock()
 
+    # --- CÁC FUNCTION TRONG BUILTIN-UI ---
     def open_dut_control(self):
-        messagebox.showinfo("DUT Control Panel", "Cửa sổ gửi tập lệnh SSH/Telnet khởi động, thay đổi cấu hình tải (Profile) của thiết bị RRU gNodeB sẽ hiển thị ở đây.")
+        DutControlWindow(self.root)
 
     def open_meter_remote(self):
-        messagebox.showinfo("Remote Console", "Giao diện SCPI Terminal để gửi lệnh Raw tới máy đo HIOKI PW3336 sẽ hiển thị ở đây.")
+        # Lấy IP và Port hiện tại từ giao diện chính để truyền sang Console
+        current_ip = self.ent_ip.get()
+        current_port = self.ent_port.get()
+        
+        # Mở popup
+        RemoteConsoleWindow(
+            parent_root=self.root, 
+            current_ip=current_ip, 
+            current_port=current_port,
+            callback_on_close=self.update_meter_config_from_console
+        )
+    
+    def update_meter_config_from_console(self, data):
+        # 1. Cập nhật IP
+        self.ent_ip.delete(0, tk.END)
+        self.ent_ip.insert(0, data["ip"])
+        
+        # 2. Cập nhật Port
+        self.ent_port.delete(0, tk.END)
+        self.ent_port.insert(0, data["port"])
+        
+        # 3. Cập nhật Channel trên Bảng LED
+        selected_ch = data["channel"]
+        if selected_ch != "SUM":
+            self.lbl_ch_volt.config(text=selected_ch)
+            self.lbl_ch_curr.config(text=selected_ch)
+            self.lbl_ch_pwr.config(text=selected_ch)
+            
+        print(f"[UI Updated] Thiết lập máy đo: {data['model']} | {data['ip']}:{data['port']} | Kênh: {selected_ch}")
+
 
     def open_batch_config(self):
-        messagebox.showinfo("Batch Configuration", "Menu thiết lập tự động chạy liên tiếp các bài:\n1. Full Load (1h)\n2. Busy 70% (1h)\n3. Busy 50% (1h)\n...")
-        
+        messagebox.showinfo("Batch Configuration", "Tự động chạy lần lượt các testcase theo ETSI ES 202 706-1:\n1. Full Load (4h)\n2. Busy 70% (8h)\n3. Busy 50% (8h)\n(Tính năng chưa phát triển)")
+    
+    def update_realtime_clock(self):
+        """Cập nhật đồng hồ hệ thống mỗi giây ở Status Bar"""
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.lbl_realtime.config(text=f"{now}")
+        # Lặp lại hàm này sau 1000ms (1 giây)
+        self.root.after(1000, self.update_realtime_clock)
+
+    def update_countdown(self):
+        """Chạy đồng hồ đếm ngược độc lập với chu kỳ lấy mẫu"""
+        if self.is_measuring and self.remaining_time >= 0:
+            mins, secs = divmod(self.remaining_time, 60)
+            hours, mins = divmod(mins, 60)
+            
+            # Định dạng chuỗi hiển thị HH:MM:SS
+            time_str = f"⏳ {int(hours):02d}:{int(mins):02d}:{int(secs):02d}"
+            self.lbl_countdown.config(text=time_str)
+            
+            self.remaining_time -= 1
+            self.root.after(1000, self.update_countdown)
+        elif not self.is_measuring:
+            self.lbl_countdown.config(text="⏳ 00:00:00")
+
     # ==========================================
     # CORE LOGIC & EVENT HANDLERS
     # ==========================================
@@ -194,6 +270,9 @@ class MainWindow:
             self.tree.delete(row)
         self.data_logs.clear()
         self.start_time = time.time()
+        # --- KÍCH HOẠT ĐẾM NGƯỢC ---
+        self.remaining_time = self.duration
+        self.update_countdown()
         
         threading.Thread(target=self.measurement_worker, daemon=True).start()
 
@@ -293,7 +372,10 @@ class MainWindow:
         left_panel = tk.Frame(row_frame, bg=self.colors["led_bg"], width=200)
         left_panel.pack(side="left", fill="y", padx=10, pady=5)
         
-        tk.Label(left_panel, text=channel, font=("Arial", 11, "bold"), fg="white", bg="#333333", relief="raised", bd=2, width=4).pack(side="left", padx=(0, 10))
+        # Gán nhãn kênh vào một biến để có thể return
+        lbl_channel = tk.Label(left_panel, text=channel, font=("Arial", 11, "bold"), fg="white", bg="#333333", relief="raised", bd=2, width=4)
+        lbl_channel.pack(side="left", padx=(0, 10))
+        
         tk.Label(left_panel, text=mode, font=("Arial", 9, "bold"), fg=self.colors["led_red"], bg=self.colors["led_bg"]).pack(side="left", padx=5)
         tk.Label(left_panel, text=label, font=("Arial", 11, "bold"), fg=self.colors["led_label"], bg=self.colors["led_bg"], width=10, anchor="w").pack(side="left", padx=5)
 
@@ -301,7 +383,8 @@ class MainWindow:
         lbl_value = tk.Label(row_frame, text=value, font=("Courier New", 36, "bold"), fg=self.colors["led_red"], bg=self.colors["led_bg"], anchor="e")
         lbl_value.pack(side="right", expand=True, fill="x", padx=10)
 
-        return lbl_value
+        # TRẢ VỀ CẢ 2 NHÃN BẰNG TUPLE
+        return lbl_channel, lbl_value
 
     def export_html_report(self):
         if not self.data_logs:
