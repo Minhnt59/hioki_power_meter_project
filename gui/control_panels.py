@@ -10,7 +10,7 @@ class RemoteConsoleWindow:
     def __init__(self, parent_root, current_ip="192.168.1.10", current_port="3390", callback_on_close=None):
         self.window = tk.Toplevel(parent_root)
         self.window.title("Power Meter - Remote Control Console")
-        self.window.geometry("550x530")
+        self.window.geometry("500x600")
         self.window.configure(bg="#F4F6F9")
         
         # Khóa tương tác với cửa sổ chính khi Popup này đang mở (Modal window)
@@ -214,7 +214,7 @@ class RemoteConsoleWindow:
                 
         # Phá hủy cửa sổ con
         self.window.destroy()
-        
+
 # ==========================================
 # DUT CONTROL PANEL
 # ==========================================

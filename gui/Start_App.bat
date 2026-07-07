@@ -1,0 +1,3 @@
+@echo off
+echo Dang khoi dong Phan mem Do kiem ETSI...
+python run.py
