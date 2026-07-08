@@ -10,7 +10,7 @@ class RemoteConsoleWindow:
     def __init__(self, parent_root, current_ip="192.168.1.10", current_port="3390", callback_on_close=None):
         self.window = tk.Toplevel(parent_root)
         self.window.title("Power Meter - Remote Control Console")
-        self.window.geometry("500x600")
+        self.window.geometry("600x680")
         self.window.configure(bg="#F4F6F9")
         
         # Khóa tương tác với cửa sổ chính khi Popup này đang mở (Modal window)
@@ -222,7 +222,7 @@ class DutControlWindow:
     def __init__(self, parent_root):
         self.window = tk.Toplevel(parent_root)
         self.window.title("DUT - Server SSH Control Panel")
-        self.window.geometry("600x680") # Tăng nhẹ chiều cao để chứa nút mới
+        self.window.geometry("600x680")
         self.window.configure(bg="#F4F6F9")
         
         self.window.grab_set()
@@ -374,3 +374,274 @@ class DutControlWindow:
             self.window.destroy()
         else:
             messagebox.showwarning("Cảnh báo", "Bạn chưa nhập kịch bản nào!")
+
+# ==========================================
+# BATCH CONTROL PANEL
+# ==========================================
+class BatchConfigWindow:
+    def __init__(self, parent_root, callback_on_ok=None):
+        self.window = tk.Toplevel(parent_root)
+        self.window.title("Batch Configuration (Multi-tests)")
+        self.window.geometry("550x380")
+        self.window.configure(bg="#F4F6F9")
+        self.window.grab_set()
+        
+        self.callback_on_ok = callback_on_ok
+        
+        self.setup_styles()
+        self.build_ui()
+
+    def setup_styles(self):
+        style = ttk.Style()
+        style.configure("Batch.TLabelframe", background="#FFFFFF")
+        style.configure("Batch.TLabelframe.Label", font=("Arial", 10, "bold"), foreground="#1E3A8A", background="#FFFFFF")
+
+    def build_ui(self):
+        # KHUNG 1: TESTCASE SELECTION
+        test_frame = ttk.LabelFrame(self.window, text="TESTCASE SELECTION", style="Batch.TLabelframe")
+        test_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        inner_frame = tk.Frame(test_frame, bg="#FFFFFF")
+        inner_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Tiêu đề cột
+        tk.Label(inner_frame, text="Select", bg="#FFFFFF", font=("Arial", 9, "bold")).grid(row=0, column=0, padx=5, pady=5)
+        tk.Label(inner_frame, text="Test Profile", bg="#FFFFFF", font=("Arial", 9, "bold"), anchor="w").grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        tk.Label(inner_frame, text="Duration (s)", bg="#FFFFFF", font=("Arial", 9, "bold")).grid(row=0, column=2, padx=5, pady=5)
+        tk.Label(inner_frame, text="ETSI Guideline", bg="#FFFFFF", font=("Arial", 9, "bold")).grid(row=0, column=3, padx=5, pady=5, sticky="w")
+
+        # Khai báo các biến
+        self.tests = [
+            {"name": "Full Load", "default_time": "3600", "guide": "> 1 hr"},
+            {"name": "Busy Hour Load", "default_time": "28800", "guide": "8 hrs"},
+            {"name": "Medium Load", "default_time": "36000", "guide": "10 hrs"},
+            {"name": "Low Load", "default_time": "21600", "guide": "6 hrs"}
+        ]
+        
+        self.vars_check = []
+        self.entries_time = []
+
+        # Render các dòng
+        for i, test in enumerate(self.tests, start=1):
+            var_chk = tk.BooleanVar(value=True)
+            self.vars_check.append(var_chk)
+            
+            # Checkbox
+            tk.Checkbutton(inner_frame, variable=var_chk, bg="#FFFFFF").grid(row=i, column=0, padx=5, pady=5)
+            # Tên bài đo
+            tk.Label(inner_frame, text=test["name"], bg="#FFFFFF").grid(row=i, column=1, padx=5, pady=5, sticky="w")
+            
+            # Ô nhập thời gian
+            ent_time = ttk.Entry(inner_frame, width=10, justify="center")
+            ent_time.insert(0, test["default_time"])
+            ent_time.grid(row=i, column=2, padx=5, pady=5)
+            self.entries_time.append(ent_time)
+            
+            # Chỉ dẫn ETSI
+            tk.Label(inner_frame, text=f"({test['guide']})", bg="#FFFFFF", fg="#6B7280", font=("Arial", 9, "italic")).grid(row=i, column=3, padx=5, pady=5, sticky="w")
+
+        # NÚT HÀNH ĐỘNG
+        btn_frame = tk.Frame(self.window, bg="#F4F6F9")
+        btn_frame.pack(fill="x", padx=15, pady=(0, 15))
+        
+        btn_close = tk.Button(btn_frame, text="Close", font=("Arial", 9), bg="#9CA3AF", fg="white", relief="flat", width=10, command=self.window.destroy)
+        btn_close.pack(side="right", padx=5)
+        
+        btn_ok = tk.Button(btn_frame, text="OK", font=("Arial", 9, "bold"), bg="#10B981", fg="white", relief="flat", width=10, command=self.on_ok_clicked)
+        btn_ok.pack(side="right", padx=5)
+
+    def on_ok_clicked(self):
+        batch_plan = []
+        for i, test in enumerate(self.tests):
+            if self.vars_check[i].get():
+                batch_plan.append({
+                    "name": test["name"],
+                    "duration": self.entries_time[i].get()
+                })
+        
+        if not batch_plan:
+            messagebox.showwarning("Cảnh báo", "Bạn phải chọn ít nhất 1 bài đo!")
+            return
+            
+        if self.callback_on_ok:
+            self.callback_on_ok(batch_plan)
+        self.window.destroy()
+
+# ==========================================
+# CALCULATION RESULTS WINDOW
+# ==========================================
+class CalculationWindow:
+    def __init__(self, parent_root):
+        self.window = tk.Toplevel(parent_root)
+        self.window.title("ETSI ES 202 706-1 | Calculation Results")
+        self.window.geometry("650x600") # Tăng nhẹ chiều cao để chứa công thức
+        self.window.configure(bg="#F4F6F9")
+        self.window.grab_set()
+        
+        self.setup_styles()
+        self.build_ui()
+
+    def setup_styles(self):
+        style = ttk.Style()
+        style.configure("Calc.TLabelframe", background="#FFFFFF", bordercolor="#D1D5DB")
+        style.configure("Calc.TLabelframe.Label", font=("Arial", 10, "bold"), foreground="#1E3A8A", background="#FFFFFF")
+
+    def build_ui(self):
+        # 1. LỰA CHỌN MÔ HÌNH TRẠM GỐC (BS MODEL)
+        model_frame = ttk.LabelFrame(self.window, text="1. BS Model Selection", style="Calc.TLabelframe")
+        model_frame.pack(fill="x", padx=15, pady=10, ipady=5)
+        
+        inner_model = tk.Frame(model_frame, bg="#FFFFFF")
+        inner_model.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        self.var_bs_model = tk.StringVar(value="Integrated")
+        tk.Radiobutton(inner_model, text="Integrated BS", variable=self.var_bs_model, value="Integrated", bg="#FFFFFF", command=self.toggle_inputs).pack(side="left", padx=20)
+        tk.Radiobutton(inner_model, text="Distributed BS", variable=self.var_bs_model, value="Distributed", bg="#FFFFFF", command=self.toggle_inputs).pack(side="left", padx=20)
+
+        # 2. KHUNG NHẬP GIÁ TRỊ (CHAPTER 7.2.1 - 7.3.3)
+        input_frame = ttk.LabelFrame(self.window, text="2. Input Measured Power (Watts)", style="Calc.TLabelframe")
+        input_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        
+        self.inner_input = tk.Frame(input_frame, bg="#FFFFFF")
+        self.inner_input.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Khởi tạo các khung nhập liệu ẩn/hiện
+        self.create_integrated_inputs()
+        self.create_distributed_inputs()
+        
+
+        # 3. KẾT QUẢ TÍNH TOÁN CÓ KÈM CÔNG THỨC
+        res_frame = ttk.LabelFrame(self.window, text="3. Calculation Results (ETSI Chapter 7)", style="Calc.TLabelframe")
+        res_frame.pack(fill="x", padx=15, pady=10, ipady=5)
+        
+        inner_res = tk.Frame(res_frame, bg="#FFFFFF")
+        inner_res.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # --- Phần tính Công suất Trung bình ---
+        # Label hiển thị công thức P_avg (Sẽ thay đổi động theo mô hình BS)
+        self.lbl_formula_avg = tk.Label(inner_res, text="Formula:", bg="#FFFFFF", fg="#6B7280", font=("Arial", 9, "italic"))
+        self.lbl_formula_avg.grid(row=0, column=0, columnspan=2, padx=10, pady=(5, 0), sticky="w")
+
+        tk.Label(inner_res, text="Average Power Consumption (W):", bg="#FFFFFF", font=("Arial", 10, "bold")).grid(row=1, column=0, padx=10, pady=(0, 5), sticky="e")
+        self.lbl_avg_power = tk.Label(inner_res, text="0.00", font=("Arial", 12, "bold"), fg="#2563EB", bg="#FFFFFF")
+        self.lbl_avg_power.grid(row=1, column=1, padx=10, pady=(0, 5), sticky="w")
+        
+        # --- Phần tính Điện năng Tiêu thụ hàng ngày ---
+        # Label hiển thị công thức E_daily (Cố định)
+        tk.Label(inner_res, text="Formula (7.2.2 / 7.3.2): E_daily = (P_avg × 24) / 1000", bg="#FFFFFF", fg="#6B7280", font=("Arial", 9, "italic")).grid(row=2, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="w")
+
+        tk.Label(inner_res, text="Daily Energy Consumption (kWh):", bg="#FFFFFF", font=("Arial", 10, "bold")).grid(row=3, column=0, padx=10, pady=(0, 5), sticky="e")
+        self.lbl_daily_energy = tk.Label(inner_res, text="0.00", font=("Arial", 12, "bold"), fg="#10B981", bg="#FFFFFF")
+        self.lbl_daily_energy.grid(row=3, column=1, padx=10, pady=(0, 5), sticky="w")
+        
+        # Gọi toggle_inputs ở đây để khởi tạo đúng công thức ngay từ đầu
+        self.toggle_inputs()
+
+        # Nút tính toán
+        btn_calc = tk.Button(self.window, text="Calculate", font=("Arial", 10, "bold"), bg="#3B82F6", fg="white", relief="flat", height=2, command=self.perform_calculation)
+        btn_calc.pack(fill="x", padx=15, pady=(0, 15))
+
+    def create_integrated_inputs(self):
+        self.frame_int = tk.Frame(self.inner_input, bg="#FFFFFF")
+        
+        # Hàng 1: P_bh
+        tk.Label(self.frame_int, text="P_bh (Busy Hour):", bg="#FFFFFF").grid(row=0, column=0, padx=5, pady=10, sticky="e")
+        self.ent_int_bh = ttk.Entry(self.frame_int, width=20)
+        self.ent_int_bh.grid(row=0, column=1, padx=5, pady=10, sticky="w")
+        
+        # Hàng 2: P_med
+        tk.Label(self.frame_int, text="P_med (Medium):", bg="#FFFFFF").grid(row=1, column=0, padx=5, pady=10, sticky="e")
+        self.ent_int_med = ttk.Entry(self.frame_int, width=20)
+        self.ent_int_med.grid(row=1, column=1, padx=5, pady=10, sticky="w")
+        
+        # Hàng 3: P_low
+        tk.Label(self.frame_int, text="P_low (Low Load):", bg="#FFFFFF").grid(row=2, column=0, padx=5, pady=10, sticky="e")
+        self.ent_int_low = ttk.Entry(self.frame_int, width=20)
+        self.ent_int_low.grid(row=2, column=1, padx=5, pady=10, sticky="w")
+
+    def create_distributed_inputs(self):
+        self.frame_dist = tk.Frame(self.inner_input, bg="#FFFFFF")
+        
+        # Central Part
+        tk.Label(self.frame_dist, text="Central Part (BBU)", font=("Arial", 9, "bold"), bg="#FFFFFF").grid(row=0, column=0, columnspan=2, pady=(0,5))
+        tk.Label(self.frame_dist, text="P_central_bh:", bg="#FFFFFF").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        self.ent_c_bh = ttk.Entry(self.frame_dist, width=12)
+        self.ent_c_bh.grid(row=1, column=1, padx=5, pady=5)
+        
+        tk.Label(self.frame_dist, text="P_central_med:", bg="#FFFFFF").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        self.ent_c_med = ttk.Entry(self.frame_dist, width=12)
+        self.ent_c_med.grid(row=2, column=1, padx=5, pady=5)
+        
+        tk.Label(self.frame_dist, text="P_central_low:", bg="#FFFFFF").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        self.ent_c_low = ttk.Entry(self.frame_dist, width=12)
+        self.ent_c_low.grid(row=3, column=1, padx=5, pady=5)
+        
+        # Remote Part
+        tk.Label(self.frame_dist, text="Remote Part (RRU/Active Antenna)", font=("Arial", 9, "bold"), bg="#FFFFFF").grid(row=0, column=2, columnspan=2, pady=(0,5), padx=(20,0))
+        tk.Label(self.frame_dist, text="P_remote_bh:", bg="#FFFFFF").grid(row=1, column=2, padx=(20,5), pady=5, sticky="e")
+        self.ent_r_bh = ttk.Entry(self.frame_dist, width=12)
+        self.ent_r_bh.grid(row=1, column=3, padx=5, pady=5)
+        
+        tk.Label(self.frame_dist, text="P_remote_med:", bg="#FFFFFF").grid(row=2, column=2, padx=(20,5), pady=5, sticky="e")
+        self.ent_r_med = ttk.Entry(self.frame_dist, width=12)
+        self.ent_r_med.grid(row=2, column=3, padx=5, pady=5)
+        
+        tk.Label(self.frame_dist, text="P_remote_low:", bg="#FFFFFF").grid(row=3, column=2, padx=(20,5), pady=5, sticky="e")
+        self.ent_r_low = ttk.Entry(self.frame_dist, width=12)
+        self.ent_r_low.grid(row=3, column=3, padx=5, pady=5)
+        
+        # Quantity
+        tk.Label(self.frame_dist, text="Number of Remote Parts:", bg="#FFFFFF").grid(row=4, column=2, padx=(20,5), pady=15, sticky="e")
+        self.ent_r_qty = ttk.Entry(self.frame_dist, width=12)
+        self.ent_r_qty.insert(0, "1")
+        self.ent_r_qty.grid(row=4, column=3, padx=5, pady=15)
+
+    def toggle_inputs(self):
+        """Hàm ẩn/hiện form nhập liệu và CẬP NHẬT CÔNG THỨC tương ứng"""
+        if self.var_bs_model.get() == "Integrated":
+            self.frame_dist.pack_forget()
+            self.frame_int.pack(fill="both", expand=True)
+            # Cập nhật công thức Integrated
+            self.lbl_formula_avg.config(text="Formula (7.2.1): P_avg = (P_bh × 8 + P_med × 10 + P_low × 6) / 24")
+        else:
+            self.frame_int.pack_forget()
+            self.frame_dist.pack(fill="both", expand=True)
+            # Cập nhật công thức Distributed
+            self.lbl_formula_avg.config(text="Formula (7.3.1): P_avg = P_central_avg + (P_remote_avg × Qty)")
+
+    def perform_calculation(self):
+        try:
+            p_avg = 0.0
+            if self.var_bs_model.get() == "Integrated":
+                p_bh = float(self.ent_int_bh.get() or 0)
+                p_med = float(self.ent_int_med.get() or 0)
+                p_low = float(self.ent_int_low.get() or 0)
+                
+                # Formula 7.2.1
+                p_avg = (p_bh * 8 + p_med * 10 + p_low * 6) / 24
+            else:
+                # Central
+                p_c_bh = float(self.ent_c_bh.get() or 0)
+                p_c_med = float(self.ent_c_med.get() or 0)
+                p_c_low = float(self.ent_c_low.get() or 0)
+                p_c_avg = (p_c_bh * 8 + p_c_med * 10 + p_c_low * 6) / 24
+                
+                # Remote
+                p_r_bh = float(self.ent_r_bh.get() or 0)
+                p_r_med = float(self.ent_r_med.get() or 0)
+                p_r_low = float(self.ent_r_low.get() or 0)
+                p_r_avg = (p_r_bh * 8 + p_r_med * 10 + p_r_low * 6) / 24
+                
+                qty = int(self.ent_r_qty.get() or 1)
+                
+                # Formula 7.3.1
+                p_avg = p_c_avg + (p_r_avg * qty)
+            
+            # Formula 7.2.2 / 7.3.2
+            daily_energy = (p_avg * 24) / 1000  # kWh
+            
+            self.lbl_avg_power.config(text=f"{p_avg:.2f}")
+            self.lbl_daily_energy.config(text=f"{daily_energy:.2f}")
+            
+        except ValueError:
+            messagebox.showerror("Lỗi dữ liệu", "Vui lòng nhập các giá trị Công suất (W) dưới dạng số hợp lệ!")

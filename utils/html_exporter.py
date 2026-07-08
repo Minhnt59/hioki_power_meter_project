@@ -64,7 +64,8 @@ class HTMLExporter:
                 <th>SỐ MẪU</th>
                 <th>PASS</th>
                 <th>FAIL</th>
-                <th>CÔNG SUẤT MAX (W)</th>
+                <th>LIMIT POWER(W)</th>
+                <th>AVERAGE POWER (W)</th>
                 <th>VERDICT</th>
             </tr>
         """
@@ -78,6 +79,7 @@ class HTMLExporter:
                 <td>{row['pass_count']}</td>
                 <td>{row['fail_count']}</td>
                 <td>{row['max_power']}</td>
+                <td>{row['final_p_avg']}</td>
                 <td class='{verdict_class}'>{row['verdict']}</td>
             </tr>
             """
@@ -100,9 +102,11 @@ class HTMLExporter:
             labels = json.dumps(detail['chart_labels'])
             data_result = json.dumps(detail['chart_data'])
             data_limit = json.dumps(detail['chart_limit'])
+            data_volt = json.dumps(detail['chart_volt']) # Nhận dữ liệu Voltage
+            data_curr = json.dumps(detail['chart_curr']) # Nhận dữ liệu Current
             
             html_content += f"""
-            <div style='width:900px;height:250px;margin-bottom:10px;'>
+            <div style='width:900px;height:350px;margin-bottom:10px;'>
                 <canvas id='chart_{idx}'></canvas>
             </div>
             <script>
@@ -112,27 +116,67 @@ class HTMLExporter:
                     labels: {labels},
                     datasets: [
                         {{
-                            label: 'P Tức thời (W)',
+                            label: 'Power (W)',
                             data: {data_result},
-                            borderColor: 'blue',
-                            fill: false,
-                            tension: 0.1
+                            borderColor: '#3B82F6', // Xanh dương
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.1,
+                            yAxisID: 'y'
                         }},
                         {{
                             label: 'Max Power Limit',
                             data: {data_limit},
-                            borderColor: 'red',
+                            borderColor: '#EF4444', // Đỏ
                             borderDash: [8,4],
                             pointRadius: 0,
                             borderWidth: 2,
-                            fill: false
+                            fill: false,
+                            yAxisID: 'y'
+                        }},
+                        {{
+                            label: 'Voltage (V)',
+                            data: {data_volt},
+                            borderColor: '#10B981', // Xanh lá
+                            fill: false,
+                            tension: 0.1,
+                            yAxisID: 'y1'
+                        }},
+                        {{
+                            label: 'Current (A)',
+                            data: {data_curr},
+                            borderColor: '#F59E0B', // Cam
+                            fill: false,
+                            tension: 0.1,
+                            yAxisID: 'y1'
                         }}
                     ]
                 }},
                 options: {{
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: {{ title: {{ display: true, text: '{test_name}' }}, legend: {{ position: 'top' }} }},
-                    scales: {{ y: {{ beginAtZero: true }} }}
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    interaction: {{ mode: 'index', intersect: false }},
+                    plugins: {{ 
+                        title: {{ display: true, text: '{test_name}' }}, 
+                        legend: {{ position: 'top' }} 
+                    }},
+                    scales: {{ 
+                        y: {{ 
+                            type: 'linear', 
+                            display: true, 
+                            position: 'left',
+                            title: {{ display: true, text: 'Power (W)' }}
+                        }},
+                        y1: {{ 
+                            type: 'linear', 
+                            display: true, 
+                            position: 'right',
+                            title: {{ display: true, text: 'Voltage (V) / Current (A)' }},
+                            grid: {{ drawOnChartArea: false }}, // Ẩn lưới của trục phụ
+                            min: 0,             
+                            suggestedMax: 100
+                        }}
+                    }}
                 }}
             }});
             </script>

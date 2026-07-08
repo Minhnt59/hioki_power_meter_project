@@ -9,7 +9,7 @@ from datetime import datetime
 from core.hioki_controller import HiokiPW3336Controller
 from utils.html_exporter import HTMLExporter
 from tkinter import filedialog
-from gui.control_panels import DutControlWindow, RemoteConsoleWindow
+from gui.control_panels import DutControlWindow, RemoteConsoleWindow, BatchConfigWindow, CalculationWindow
 
 class MainWindow:
     def __init__(self, root):
@@ -97,9 +97,12 @@ class MainWindow:
         test_form.pack(side="left", padx=5)
         
         tk.Label(test_form, text="Bài đo:", bg=self.colors["bg_card"], font=("Helvetica", 9)).grid(row=0, column=0, padx=5, pady=3, sticky="w")
-        self.cb_profile = ttk.Combobox(test_form, values=["Full Load", "Busy 70%", "Busy 50%", "Low Load"], width=13)
+        self.cb_profile = ttk.Combobox(test_form, values=["Full Load", "Busy Hour Load", "Medium Load", "Low Load"], width=13)
         self.cb_profile.set("Full Load")
         self.cb_profile.grid(row=0, column=1, padx=5, pady=3)
+        
+        # Thêm sự kiện: Khi chọn Combobox sẽ tự động đổi thời gian tương ứng
+        self.cb_profile.bind("<<ComboboxSelected>>", self.on_profile_selected)
         
         self.ent_duration = self.create_input_row(test_form, "Time (s):", "3600", 1)
         self.ent_sample = self.create_input_row(test_form, "Sample (s):", "1.0", 2)
@@ -107,7 +110,10 @@ class MainWindow:
         test_ctrl = tk.Frame(frame_test, bg=self.colors["bg_card"])
         test_ctrl.pack(side="right", fill="y", padx=10, pady=5)
       
-        tk.Button(test_ctrl, text="⚙ Batch Config\n(Multi-tests)", font=("Arial", 9, "bold"), bg="#DBEAFE", fg=self.colors["primary"], height=3, command=self.open_batch_config).pack(pady=5)
+        # 1. Nút Batch Config
+        tk.Button(test_ctrl, text="⚙ Batch Config\n(Multi-tests)", font=("Arial", 9, "bold"), bg="#DBEAFE", fg=self.colors["primary"], height=2, command=self.open_batch_config).pack(pady=(0, 5), fill="x")   
+        # 2. Nút Calculation (MỚI)
+        tk.Button(test_ctrl, text="🧮 Calculation", font=("Arial", 9, "bold"), bg="#FEF3C7", fg="#B45309", height=1, command=self.open_calculation).pack(fill="x")
         # --- DASHBOARD & LED BẢNG ---
         dashboard_frame = tk.Frame(self.root, bg=self.colors["led_bg"], bd=5, relief="ridge")
         dashboard_frame.pack(fill="x", padx=10, pady=5)
@@ -118,6 +124,10 @@ class MainWindow:
         self.btn_start.pack(side="left", padx=10, pady=5)
         self.btn_stop = tk.Button(toolbar, text="⏹ STOP", font=("Arial", 10, "bold"), bg="#EF4444", fg="white", state="disabled", command=self.stop_measurement)
         self.btn_stop.pack(side="left")
+
+        # 1. THÊM LABEL HIỂN THỊ TÊN BÀI ĐANG ĐO (Nằm giữa Stop và Evaluation)
+        self.lbl_current_test = tk.Label(toolbar, text="TEST: NONE", font=("Arial", 11, "bold"), bg="#1F1F1F", fg="#60A5FA")
+        self.lbl_current_test.pack(side="left", padx=30, pady=5)
         
         self.lbl_eval = tk.Label(toolbar, text="EVALUATION: N/A", font=("Courier New", 12, "bold"), bg="#1F1F1F", fg="yellow")
         self.lbl_eval.pack(side="left", padx=30, pady=5)
@@ -202,10 +212,39 @@ class MainWindow:
             
         print(f"[UI Updated] Thiết lập máy đo: {data['model']} | {data['ip']}:{data['port']} | Kênh: {selected_ch}")
 
-
     def open_batch_config(self):
-        messagebox.showinfo("Batch Configuration", "Tự động chạy lần lượt các testcase theo ETSI ES 202 706-1:\n1. Full Load (4h)\n2. Busy 70% (8h)\n3. Busy 50% (8h)\n(Tính năng chưa phát triển)")
-    
+        # Truyền callback để lấy danh sách bài đo từ Batch Window về
+        BatchConfigWindow(self.root, callback_on_ok=self.apply_batch_plan)
+
+    def apply_batch_plan(self, batch_plan):
+        """Hàm nhận kết quả từ cửa sổ Batch Config"""
+        self.batch_plan = batch_plan
+        if self.batch_plan:
+            msg = "Đã nhận danh sách chạy tự động:\n"
+            for item in self.batch_plan:
+                msg += f"- {item['name']}: {item['duration']}s\n"
+            messagebox.showinfo("Batch Ready", msg)
+            
+            # Tự động set giao diện theo bài đầu tiên trong Batch
+            first_test = self.batch_plan[0]
+            self.cb_profile.set(first_test['name'])
+            self.ent_duration.delete(0, tk.END)
+            self.ent_duration.insert(0, first_test['duration'])
+
+    def on_profile_selected(self, event=None):
+        """Khi user chọn bằng tay trên Combo Box, tự động tìm thời gian tương ứng trong Batch để điền vào"""
+        selected_name = self.cb_profile.get()
+        # Kiểm tra xem có cấu hình batch lưu sẵn không
+        if hasattr(self, 'batch_plan') and self.batch_plan:
+            for test in self.batch_plan:
+                if test['name'] == selected_name:
+                    self.ent_duration.delete(0, tk.END)
+                    self.ent_duration.insert(0, test['duration'])
+                    break
+
+    def open_calculation(self):
+        CalculationWindow(self.root)
+
     def update_realtime_clock(self):
         """Cập nhật đồng hồ hệ thống mỗi giây ở Status Bar"""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -232,6 +271,53 @@ class MainWindow:
     # CORE LOGIC & EVENT HANDLERS
     # ==========================================
     def start_measurement(self):
+        # Khởi tạo kho lưu trữ tổng cho toàn bộ Batch
+        self.all_batch_results = []
+        # Nếu chưa cấu hình Batch, tạo tạm 1 Batch giả chứa bài đo hiện tại trên giao diện
+        if not hasattr(self, 'batch_plan') or not self.batch_plan:
+            self.batch_plan = [{
+                "name": self.cb_profile.get(),
+                "duration": self.ent_duration.get()
+            }]
+            
+        # Khởi tạo biến chạy Batch
+        self.current_batch_index = 0
+        self.run_next_batch_test()
+
+    def run_next_batch_test(self):
+        """Lấy bài đo tiếp theo trong hàng đợi Batch để chạy"""
+        if self.current_batch_index < len(self.batch_plan):
+            current_test = self.batch_plan[self.current_batch_index]
+            
+            # 1. Cập nhật giao diện (Combobox, Thời gian, Tên bài đang chạy)
+            self.cb_profile.set(current_test['name'])
+            self.ent_duration.delete(0, tk.END)
+            self.ent_duration.insert(0, current_test['duration'])
+            self.lbl_current_test.config(text=f"TEST: {current_test['name'].upper()}")
+            
+            # 2. HIỆN MESSAGE BOX YÊU CẦU CẤU HÌNH BS
+            ready = messagebox.askokcancel(
+                "Cấu hình Base Station",
+                f"Bước {self.current_batch_index + 1}/{len(self.batch_plan)}: Chuẩn bị đo bài [{current_test['name']}]\n\n"
+                f"Vui lòng đảm bảo thiết bị DU/RRU đã được thiết lập đúng Profile tải.\n\n"
+                f"Bấm OK để tiến hành kết nối máy đo HIOKI và bắt đầu ghi dữ liệu."
+            )
+            
+            if ready:
+                # 3. Tiến hành kết nối và đo (Gộp phần check IP, kết nối từ start_measurement cũ vào đây)
+                self.connect_and_measure()
+            else:
+                # Nếu User bấm Cancel -> Hủy toàn bộ tiến trình Batch
+                self.stop_measurement()
+                messagebox.showinfo("Đã Hủy", "Quá trình đo Batch đã bị hủy bỏ bởi người dùng.")
+        else:
+            # Chạy xong toàn bộ danh sách Batch
+            self.stop_measurement()
+            self.lbl_current_test.config(text="TEST: NONE")
+            messagebox.showinfo("Hoàn tất", "Tất cả các bài đo trong kế hoạch Batch đã hoàn thành!")
+
+    def connect_and_measure(self):
+        """Phần lõi kết nối máy đo (Tách từ hàm start_measurement cũ)"""
         ip = self.ent_ip.get()
         port = int(self.ent_port.get())
         
@@ -240,25 +326,22 @@ class MainWindow:
             self.sample_rate = float(self.ent_sample.get())
             self.max_power = float(self.ent_max_pwr.get())
         except ValueError:
-            messagebox.showerror("Input Error", "Vui lòng nhập đúng số!")
+            messagebox.showerror("Lỗi", "Vui lòng nhập đúng định dạng số!")
             return
 
-        # KIỂM TRA CHẾ ĐỘ MÔ PHỎNG
         if self.var_sim_mode.get():
-            self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B") # Màu cam báo hiệu đang chạy giả lập
+            self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
             self.start_routine()
         else:
-            # Chạy thật: Kết nối thiết bị
             self.controller = HiokiPW3336Controller(ip, port)
             success, msg = self.controller.connect()
-            
             if success:
                 self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
                 self.controller.setup_measure_items()
                 self.start_routine()
             else:
                 self.lbl_meter_status.config(text="● FAILED", fg=self.colors["status_off"])
-                messagebox.showerror("Connection Error", msg)
+                messagebox.showerror("Lỗi Kết Nối", msg)
 
     def start_routine(self):
         """Hàm phụ trợ dọn dẹp UI và kích hoạt luồng chạy"""
@@ -296,8 +379,8 @@ class MainWindow:
         while self.is_measuring:
             elapsed = time.time() - self.start_time
             if elapsed > self.duration:
-                self.root.after(0, self.stop_measurement)
-                self.root.after(0, lambda: messagebox.showinfo("Hoàn thành", "Đã kết thúc thời gian thử nghiệm."))
+                self.is_measuring = False
+                self.root.after(0, self.on_test_finished)
                 break
 
             data = None
@@ -309,9 +392,9 @@ class MainWindow:
                 
                 if current_profile == "Full Load":
                     curr = random.uniform(14.5, 15.5)
-                elif current_profile == "Busy 70%":
+                elif current_profile == "Busy Hour Load":
                     curr = random.uniform(10.0, 11.0)
-                elif current_profile == "Busy 50%":
+                elif current_profile == "Medium Load":
                     curr = random.uniform(7.0, 7.8)
                 else: # Low Load
                     curr = random.uniform(2.0, 2.5)
@@ -331,6 +414,27 @@ class MainWindow:
                 self.root.after(0, self.update_dashboard, record)
 
             time.sleep(self.sample_rate)
+
+    def on_test_finished(self):
+        # 1. LƯU DỮ LIỆU CỦA BÀI VỪA ĐO VÀO KHO
+        if hasattr(self, 'data_logs') and self.data_logs:
+            self.all_batch_results.append({
+                "test_name": self.cb_profile.get(),
+                "max_power": float(self.ent_max_pwr.get()),
+                "logs": list(self.data_logs) 
+            })
+
+        # Ngắt kết nối thiết bị sau mỗi bài
+        if self.controller:
+            self.controller.disconnect()
+            
+        # (Tùy chọn): Tại đây có thể chèn dòng code gọi tính năng Auto-Export báo cáo 
+        # file_path = f"report_{self.batch_plan[self.current_batch_index]['name']}.html"
+        # self.export_html_report(auto_save_path=file_path)
+        
+        
+        self.current_batch_index += 1
+        self.run_next_batch_test()    
 
     def update_dashboard(self, record):
         """Cập nhật dữ liệu hiển thị (Chạy trên Main Thread)"""
@@ -385,11 +489,20 @@ class MainWindow:
 
         # TRẢ VỀ CẢ 2 NHÃN BẰNG TUPLE
         return lbl_channel, lbl_value
-
+    
     def export_html_report(self):
-        if not self.data_logs:
-            messagebox.showwarning("Cảnh báo", "Không có dữ liệu để xuất báo cáo!")
-            return
+        # Kiểm tra xem có dữ liệu trong kho tổng hoặc data_logs đang hiển thị không
+        if not hasattr(self, 'all_batch_results') or not self.all_batch_results:
+            if not self.data_logs:
+                messagebox.showwarning("Cảnh báo", "Không có dữ liệu để xuất báo cáo!")
+                return
+            else:
+                # Nếu chạy lẻ tẻ (chưa có trong all_batch_results) thì tự động bọc lại
+                self.all_batch_results = [{
+                    "test_name": self.cb_profile.get(),
+                    "max_power": float(self.ent_max_pwr.get()),
+                    "logs": list(self.data_logs)
+                }]
 
         file_path = filedialog.asksaveasfilename(
             defaultextension=".html", 
@@ -400,54 +513,143 @@ class MainWindow:
         if not file_path:
             return
 
-        # 1. Chuẩn bị Dữ liệu Thông tin chung
-        overall_pass = all(row[7] == "PASS" for row in self.data_logs)
-        general_info = {
-            "Serial Number": self.ent_serial.get(),
-            "Product Type": "RRU gNodeB",
-            "Test Standard": "ETSI ES 202 706-1",
-            "Start Time": self.data_logs[0][1] if self.data_logs else "N/A",
-            "End Time": self.data_logs[-1][1] if self.data_logs else "N/A",
-            "Overall Result": "PASS" if overall_pass else "FAIL"
-        }
+        summary_data = []
+        detailed_data = []
+        overall_pass = True
 
-        # 2. Chuẩn bị Dữ liệu Tóm tắt
-        test_name = self.cb_profile.get()
-        max_limit = float(self.ent_max_pwr.get())
-        total = len(self.data_logs)
-        pass_count = sum(1 for row in self.data_logs if row[7] == "PASS")
-        fail_count = total - pass_count
+        # QUÉT QUA TỪNG BÀI ĐO TRONG BATCH ĐỂ LÀM BÁO CÁO
+        for result in self.all_batch_results:
+            t_name = result["test_name"]
+            m_power = result["max_power"]
+            logs = result["logs"]
+            
+            total = len(logs)
+            if total == 0: continue
+            
+            pass_count = sum(1 for row in logs if row[7] == "PASS")
+            fail_count = total - pass_count
+            
+            if fail_count > 0:
+                overall_pass = False
+            
+            final_p_avg = logs[-1][6]
 
-        summary_data = [
-            {
-                "test_name": test_name,
+            # Dữ liệu cho Bảng tóm tắt (Summary)
+            summary_data.append({
+                "test_name": t_name,
                 "total": total,
                 "pass_count": pass_count,
                 "fail_count": fail_count,
-                "max_power": max_limit,
+                "max_power": m_power,
+                "final_p_avg": final_p_avg,
                 "verdict": "PASS" if fail_count == 0 else "FAIL"
-            }
-        ]
+            })
+            
+            # Dữ liệu cho Bảng chi tiết & Biểu đồ Chart.js
+            chart_labels = [row[2] for row in logs]
+            chart_data = [float(row[5]) for row in logs]
+            chart_limit = [m_power] * total
 
-        # 3. Chuẩn bị Dữ liệu Chi tiết & Biểu đồ
-        chart_labels = [row[2] for row in self.data_logs] # Trục X: Thời gian đo (s)
-        chart_data = [float(row[5]) for row in self.data_logs] # Trục Y: Công suất P
-        chart_limit = [max_limit] * total # Đường kẻ ngang đỏ giới hạn
-
-        detailed_data = [
-            {
-                "test_name": test_name,
+            # U, I
+            chart_volt = [float(row[3]) for row in logs]  
+            chart_curr = [float(row[4]) for row in logs]  
+            
+            detailed_data.append({
+                "test_name": t_name,
                 "total": total,
                 "fail_count": fail_count,
                 "chart_labels": chart_labels,
                 "chart_data": chart_data,
                 "chart_limit": chart_limit,
-                "table_data": self.data_logs
-            }
-        ]
+                "chart_volt": chart_volt,   # Voltage
+                "chart_curr": chart_curr,   # Current
+                "table_data": logs
+            })
 
-        # 4. Xuất file
+        # Dữ liệu Header của Report
+        first_log = self.all_batch_results[0]["logs"]
+        last_log = self.all_batch_results[-1]["logs"]
+        
+        general_info = {
+            "Serial Number": self.ent_serial.get(),
+            "Product Type": "RRU gNodeB",
+            "Test Standard": "ETSI ES 202 706-1",
+            "Start Time": first_log[0][1] if first_log else "N/A",
+            "End Time": last_log[-1][1] if last_log else "N/A",
+            "Overall Result": "PASS" if overall_pass else "FAIL"
+        }
+
+        # Gọi file HTMLExporter
+        from utils.html_exporter import HTMLExporter
         exporter = HTMLExporter()
         exporter.export_report(file_path, general_info, summary_data, detailed_data)
         
-        messagebox.showinfo("Thành công", f"Đã xuất báo cáo HTML thành công:\n{file_path}")
+        messagebox.showinfo("Thành công", f"Đã xuất báo cáo Batch HTML ({len(self.all_batch_results)} bài đo) thành công:\n{file_path}")
+
+    # def export_html_report(self):
+    #     if not self.data_logs:
+    #         messagebox.showwarning("Cảnh báo", "Không có dữ liệu để xuất báo cáo!")
+    #         return
+
+    #     file_path = filedialog.asksaveasfilename(
+    #         defaultextension=".html", 
+    #         filetypes=[("HTML Report", "*.html")],
+    #         initialfile=f"{self.ent_serial.get()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+    #     )
+        
+    #     if not file_path:
+    #         return
+
+    #     # 1. Chuẩn bị Dữ liệu Thông tin chung
+    #     overall_pass = all(row[7] == "PASS" for row in self.data_logs)
+    #     general_info = {
+    #         "Serial Number": self.ent_serial.get(),
+    #         "Product Type": "RRU gNodeB",
+    #         "Test Standard": "ETSI ES 202 706-1",
+    #         "Start Time": self.data_logs[0][1] if self.data_logs else "N/A",
+    #         "End Time": self.data_logs[-1][1] if self.data_logs else "N/A",
+    #         "Overall Result": "PASS" if overall_pass else "FAIL"
+    #     }
+
+    #     # 2. Chuẩn bị Dữ liệu Tóm tắt
+    #     test_name = self.cb_profile.get()
+    #     max_limit = float(self.ent_max_pwr.get())
+    #     total = len(self.data_logs)
+    #     pass_count = sum(1 for row in self.data_logs if row[7] == "PASS")
+    #     fail_count = total - pass_count
+
+    #     summary_data = [
+    #         {
+    #             "test_name": test_name,
+    #             "total": total,
+    #             "pass_count": pass_count,
+    #             "fail_count": fail_count,
+    #             "max_power": max_limit,
+    #             # công suất trung bình lấy giá trị cuối của bảng dữ liệu
+    #             "average_power": self.data_logs[-1][6] if self.data_logs else 0,
+    #             "verdict": "PASS" if fail_count == 0 else "FAIL"
+    #         }
+    #     ]
+
+    #     # 3. Chuẩn bị Dữ liệu Chi tiết & Biểu đồ
+    #     chart_labels = [row[2] for row in self.data_logs] # Trục X: Thời gian đo (s)
+    #     chart_data = [float(row[5]) for row in self.data_logs] # Trục Y: Công suất P
+    #     chart_limit = [max_limit] * total # Đường kẻ ngang đỏ giới hạn
+
+    #     detailed_data = [
+    #         {
+    #             "test_name": test_name,
+    #             "total": total,
+    #             "fail_count": fail_count,
+    #             "chart_labels": chart_labels,
+    #             "chart_data": chart_data,
+    #             "chart_limit": chart_limit,
+    #             "table_data": self.data_logs
+    #         }
+    #     ]
+
+    #     # 4. Xuất file
+    #     exporter = HTMLExporter()
+    #     exporter.export_report(file_path, general_info, summary_data, detailed_data)
+        
+    #     messagebox.showinfo("Thành công", f"Đã xuất báo cáo HTML thành công:\n{file_path}")
