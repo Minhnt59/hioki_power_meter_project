@@ -2,10 +2,8 @@ from core.hioki_controller import HiokiPW3336Controller
 # Sau này bạn có thể import thêm: from core.ssh_controller import DUServerController
 
 class DeviceManager:
-    """
-    Áp dụng Singleton Pattern: Đảm bảo toàn bộ phần mềm chỉ có DUY NHẤT 1 instance của DeviceManager.
-    Tất cả các cửa sổ (Main, Popup) đều truy cập chung vào kho tài nguyên này.
-    """
+
+    # Singleton Pattern
     _instance = None
 
     def __new__(cls):

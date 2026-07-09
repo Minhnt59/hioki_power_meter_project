@@ -10,10 +10,12 @@ from core.hioki_controller import HiokiPW3336Controller
 from utils.html_exporter import HTMLExporter
 from tkinter import filedialog
 from gui.control_panels import DutControlWindow, RemoteConsoleWindow, BatchConfigWindow, CalculationWindow
+from core.device_manager import DeviceManager
 
 class MainWindow:
     def __init__(self, root):
         self.root = root
+        self.devices = DeviceManager()
         self.root.title("ETSI ES 202 706-1 | RRU Power Measurement")
         self.root.geometry("1100x850")
         
@@ -60,7 +62,7 @@ class MainWindow:
         dut_form.pack(side="left", padx=5)
         
         self.ent_serial = self.create_input_row(dut_form, "Serial:", "RRU8888_SN01", 0)
-        self.ent_max_pwr = self.create_input_row(dut_form, "Max Power (W):", "1500.0", 1)
+        self.ent_max_pwr = self.create_input_row(dut_form, "Max Power (W):", "1000.0", 1)
         
         dut_ctrl = tk.Frame(frame_dut, bg=self.colors["bg_card"])
         dut_ctrl.pack(side="right", fill="y", padx=10, pady=5)
@@ -96,22 +98,22 @@ class MainWindow:
         test_form = tk.Frame(frame_test, bg=self.colors["bg_card"])
         test_form.pack(side="left", padx=5)
         
-        tk.Label(test_form, text="Bài đo:", bg=self.colors["bg_card"], font=("Helvetica", 9)).grid(row=0, column=0, padx=5, pady=3, sticky="w")
-        self.cb_profile = ttk.Combobox(test_form, values=["Full Load", "Busy Hour Load", "Medium Load", "Low Load"], width=13)
-        self.cb_profile.set("Full Load")
-        self.cb_profile.grid(row=0, column=1, padx=5, pady=3)
+        # tk.Label(test_form, text="Bài đo:", bg=self.colors["bg_card"], font=("Helvetica", 9)).grid(row=0, column=0, padx=5, pady=3, sticky="w")
+        # self.cb_profile = ttk.Combobox(test_form, values=["Full Load", "Busy Hour Load", "Medium Load", "Low Load"], width=13)
+        # self.cb_profile.set("Full Load")
+        # self.cb_profile.grid(row=0, column=1, padx=5, pady=3)
         
-        # Thêm sự kiện: Khi chọn Combobox sẽ tự động đổi thời gian tương ứng
-        self.cb_profile.bind("<<ComboboxSelected>>", self.on_profile_selected)
+        # # Thêm sự kiện: Khi chọn Combobox sẽ tự động đổi thời gian tương ứng
+        # self.cb_profile.bind("<<ComboboxSelected>>", self.on_profile_selected)
         
-        self.ent_duration = self.create_input_row(test_form, "Time (s):", "3600", 1)
-        self.ent_sample = self.create_input_row(test_form, "Sample (s):", "1.0", 2)
+        # self.ent_duration = self.create_input_row(test_form, "Time (s):", "3600", 1)
+        self.ent_sample = self.create_input_row(test_form, "Sample (s):", "1.0", 0)
 
         test_ctrl = tk.Frame(frame_test, bg=self.colors["bg_card"])
         test_ctrl.pack(side="right", fill="y", padx=10, pady=5)
       
         # 1. Nút Batch Config
-        tk.Button(test_ctrl, text="⚙ Batch Config\n(Multi-tests)", font=("Arial", 9, "bold"), bg="#DBEAFE", fg=self.colors["primary"], height=2, command=self.open_batch_config).pack(pady=(0, 5), fill="x")   
+        tk.Button(test_ctrl, text="⚙ Testcases", font=("Arial", 9, "bold"), bg="#DBEAFE", fg=self.colors["primary"], height=2, command=self.open_batch_config).pack(pady=(0, 5), fill="x")   
         # 2. Nút Calculation (MỚI)
         tk.Button(test_ctrl, text="🧮 Calculation", font=("Arial", 9, "bold"), bg="#FEF3C7", fg="#B45309", height=1, command=self.open_calculation).pack(fill="x")
         # --- DASHBOARD & LED BẢNG ---
@@ -125,17 +127,26 @@ class MainWindow:
         self.btn_stop = tk.Button(toolbar, text="⏹ STOP", font=("Arial", 10, "bold"), bg="#EF4444", fg="white", state="disabled", command=self.stop_measurement)
         self.btn_stop.pack(side="left")
 
-        # 1. THÊM LABEL HIỂN THỊ TÊN BÀI ĐANG ĐO (Nằm giữa Stop và Evaluation)
+        # === COMBOBOX CHỌN CHANNEL ===
+        # tk.Label(toolbar, text="Channel:", bg=self.colors["bg_card"], font=("Arial", 9, "bold")).pack(side="left", padx=(20, 5))
+        self.cb_channel = ttk.Combobox(toolbar, values=["CH1", "CH2", "CH3", "SUM"], width=5, state="readonly")
+        self.cb_channel.set("CH1")
+        self.cb_channel.pack(side="left", padx=10, pady=5)
+        
+        self.cb_channel.bind("<<ComboboxSelected>>", self.on_channel_changed)
+
+        # === LABEL HIỂN THỊ TÊN BÀI ĐANG ĐO ===
         self.lbl_current_test = tk.Label(toolbar, text="TEST: NONE", font=("Arial", 11, "bold"), bg="#1F1F1F", fg="#60A5FA")
         self.lbl_current_test.pack(side="left", padx=30, pady=5)
         
         self.lbl_eval = tk.Label(toolbar, text="EVALUATION: N/A", font=("Courier New", 12, "bold"), bg="#1F1F1F", fg="yellow")
         self.lbl_eval.pack(side="left", padx=30, pady=5)
 
+        # === BUTTON EXPORT REPORT ===
         self.btn_export = tk.Button(toolbar, text="EXPORT REPORT", font=("Arial", 10, "bold"), bg="#374151", fg="white", relief="flat", width=15, command=self.export_html_report)
         self.btn_export.pack(side="right", padx=10, pady=5)
 
-        # 1. Thêm đồng hồ đếm ngược
+        # === ĐỒNG HỒ ĐẾM NGƯỢC ===
         self.lbl_countdown = tk.Label(toolbar, text="⏳ 00:00:00", font=("Courier New", 14, "bold"), bg="#1F1F1F", fg="#38BDF8")
         self.lbl_countdown.pack(side="right", padx=20, pady=5)
 
@@ -195,53 +206,68 @@ class MainWindow:
         )
     
     def update_meter_config_from_console(self, data):
-        # 1. Cập nhật IP
+        # 1. Cập nhật UI
         self.ent_ip.delete(0, tk.END)
         self.ent_ip.insert(0, data["ip"])
-        
-        # 2. Cập nhật Port
         self.ent_port.delete(0, tk.END)
         self.ent_port.insert(0, data["port"])
         
-        # 3. Cập nhật Channel trên Bảng LED
-        selected_ch = data["channel"]
-        if selected_ch != "SUM":
-            self.lbl_ch_volt.config(text=selected_ch)
-            self.lbl_ch_curr.config(text=selected_ch)
-            self.lbl_ch_pwr.config(text=selected_ch)
-            
-        print(f"[UI Updated] Thiết lập máy đo: {data['model']} | {data['ip']}:{data['port']} | Kênh: {selected_ch}")
-
-        passed_controller = data.get("controller")
-        is_connected_from_console = data.get("is_connected")
-
-        # ========================================================
-        # TRƯỜNG HỢP 1: KẾ THỪA LUÔN KẾT NỐI TỪ CỬA SỔ POPUP
-        # ========================================================
-        if is_connected_from_console and passed_controller:
-            # Ngắt kết nối cũ của MainWindow (nếu đang có) để tránh xung đột
-            if hasattr(self, 'controller') and self.controller and self.controller != passed_controller:
-                self.controller.disconnect()
-
-            # Nhận bàn giao kết nối từ Popup
-            self.controller = passed_controller
-            
-            # Đổi đèn trạng thái thành màu xanh ngay lập tức
+        if self.devices.is_hioki_connected():
             self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
+            # Truyền channel hiện tại trên UI vào máy đo
+            self.devices.get_hioki().setup_measure_items(self.cb_channel.get())
+        else:
+            if not self.var_sim_mode.get():
+                self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
+            else:
+                self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
+
+        # # 3. Cập nhật Channel trên Bảng LED
+        # selected_ch = data["channel"]
+        # if selected_ch != "SUM":
+        #     self.lbl_ch_volt.config(text=selected_ch)
+        #     self.lbl_ch_curr.config(text=selected_ch)
+        #     self.lbl_ch_pwr.config(text=selected_ch)
+        
+        # else:
+        #     # Nếu user chỉ đổi IP mà chưa bấm Connect trong Popup
+        #     if not self.var_sim_mode.get():
+        #         self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
+        #     else:
+        #         self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
+
+        # print(f"[UI Updated] Thiết lập máy đo: {data['model']} | {data['ip']}:{data['port']} | Kênh: {selected_ch}")
+
+        # passed_controller = data.get("controller")
+        # is_connected_from_console = data.get("is_connected")
+
+        # # ========================================================
+        # # TRƯỜNG HỢP 1: KẾ THỪA LUÔN KẾT NỐI TỪ CỬA SỔ POPUP
+        # # ========================================================
+        # if is_connected_from_console and passed_controller:
+        #     # Ngắt kết nối cũ của MainWindow (nếu đang có) để tránh xung đột
+        #     if hasattr(self, 'controller') and self.controller and self.controller != passed_controller:
+        #         self.controller.disconnect()
+
+        #     # Nhận bàn giao kết nối từ Popup
+        #     self.controller = passed_controller
             
-            # Thiết lập các thông số đo 
-            self.controller.setup_measure_items()
-            # messagebox.showinfo("Kế thừa", "Đã giữ nguyên trạng thái kết nối từ cửa sổ cấu hình!")
-            return
+        #     # Đổi đèn trạng thái thành màu xanh ngay lập tức
+        #     self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
+            
+        #     # Thiết lập các thông số đo 
+        #     self.controller.setup_measure_items()
+        #     # messagebox.showinfo("Kế thừa", "Đã giữ nguyên trạng thái kết nối từ cửa sổ cấu hình!")
+        #     return
 
-        # Nếu đang ở chế độ Simulation thì bỏ qua không kết nối thật
-        if self.var_sim_mode.get():
-            self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
-            messagebox.showinfo("Mô phỏng", "Đã cập nhật cấu hình. App đang ở chế độ mô phỏng nên không kết nối thiết bị thật.")
-            return
+        # # Nếu đang ở chế độ Simulation thì bỏ qua không kết nối thật
+        # if self.var_sim_mode.get():
+        #     self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
+        #     messagebox.showinfo("Mô phỏng", "Đã cập nhật cấu hình. App đang ở chế độ mô phỏng nên không kết nối thiết bị thật.")
+        #     return
 
-        # Đổi Label trạng thái thành "Đang kết nối..."
-        self.lbl_meter_status.config(text="● CONNECTING...", fg="#6B7280")
+        # # Đổi Label trạng thái thành "Đang kết nối..."
+        # self.lbl_meter_status.config(text="● CONNECTING...", fg="#6B7280")
         
         # 1. Viết hàm chạy ngầm thao tác mạng
         def _bg_connect_task():
@@ -266,23 +292,20 @@ class MainWindow:
         threading.Thread(target=_bg_connect_task, daemon=True).start()
 
     def open_batch_config(self):
-        # Truyền callback để lấy danh sách bài đo từ Batch Window về
-        BatchConfigWindow(self.root, callback_on_ok=self.apply_batch_plan)
+        initial_config = getattr(self, 'full_batch_config', None)
+        BatchConfigWindow(self.root, initial_config=initial_config, callback_on_ok=self.apply_batch_plan)
 
-    def apply_batch_plan(self, batch_plan):
+    def apply_batch_plan(self, full_config):
         """Hàm nhận kết quả từ cửa sổ Batch Config"""
-        self.batch_plan = batch_plan
+        # 2. Lưu lại toàn bộ trạng thái (cả cái check và uncheck)
+        self.full_batch_config = full_config
+        self.batch_plan = [item for item in full_config if item["checked"]]
+        
         if self.batch_plan:
             msg = "Đã nhận danh sách chạy tự động:\n"
             for item in self.batch_plan:
                 msg += f"- {item['name']}: {item['duration']}s\n"
             messagebox.showinfo("Batch Ready", msg)
-            
-            # Tự động set giao diện theo bài đầu tiên trong Batch
-            first_test = self.batch_plan[0]
-            self.cb_profile.set(first_test['name'])
-            self.ent_duration.delete(0, tk.END)
-            self.ent_duration.insert(0, first_test['duration'])
 
     def on_profile_selected(self, event=None):
         """Khi user chọn bằng tay trên Combo Box, tự động tìm thời gian tương ứng trong Batch để điền vào"""
@@ -319,63 +342,75 @@ class MainWindow:
             self.root.after(1000, self.update_countdown)
         elif not self.is_measuring:
             self.lbl_countdown.config(text="⏳ 00:00:00")
+    
+    def on_channel_changed(self, event=None):
+        """Hàm chạy khi người dùng chọn kênh khác trên Combobox"""
+        selected_ch = self.cb_channel.get()
+        
+        # 1. Đổi chữ trên giao diện LED (CH1 -> CH2...)
+        if selected_ch != "SUM":
+            self.lbl_ch_volt.config(text=selected_ch)
+            self.lbl_ch_curr.config(text=selected_ch)
+            self.lbl_ch_pwr.config(text=selected_ch)
+        else:
+            self.lbl_ch_volt.config(text="SUM")
+            self.lbl_ch_curr.config(text="SUM")
+            self.lbl_ch_pwr.config(text="SUM")
+            
+        # 2. Nếu máy đo đang kết nối, gửi lệnh bắt máy đo chuyển kênh ngay lập tức
+        if self.devices.is_hioki_connected():
+            self.devices.get_hioki().setup_measure_items(selected_ch)
 
     # ==========================================
     # CORE LOGIC & EVENT HANDLERS
     # ==========================================
     def start_measurement(self):
+        if not hasattr(self, 'batch_plan') or not self.batch_plan:
+            messagebox.showwarning("Chưa cấu hình", "Chưa chọn testcase!")
+            return
         # Khởi tạo kho lưu trữ tổng cho toàn bộ Batch
         self.all_batch_results = []
-        # Nếu chưa cấu hình Batch, tạo tạm 1 Batch giả chứa bài đo hiện tại trên giao diện
-        if not hasattr(self, 'batch_plan') or not self.batch_plan:
-            self.batch_plan = [{
-                "name": self.cb_profile.get(),
-                "duration": self.ent_duration.get()
-            }]
-            
-        # Khởi tạo biến chạy Batch
+
         self.current_batch_index = 0
         self.run_next_batch_test()
 
     def run_next_batch_test(self):
-        """Lấy bài đo tiếp theo trong hàng đợi Batch để chạy"""
         if self.current_batch_index < len(self.batch_plan):
             current_test = self.batch_plan[self.current_batch_index]
             
-            # 1. Cập nhật giao diện (Combobox, Thời gian, Tên bài đang chạy)
-            self.cb_profile.set(current_test['name'])
-            self.ent_duration.delete(0, tk.END)
-            self.ent_duration.insert(0, current_test['duration'])
-            self.lbl_current_test.config(text=f"TEST: {current_test['name'].upper()}")
+            # Cập nhật thông số ẩn và Label trạng thái
+            self.current_profile_name = current_test['name']
+            self.duration = int(current_test['duration'])
+            self.lbl_current_test.config(text=f"TEST: {self.current_profile_name.upper()}")
             
-            # 2. HIỆN MESSAGE BOX YÊU CẦU CẤU HÌNH BS
             ready = messagebox.askokcancel(
                 "Cấu hình Base Station",
-                f"Bước {self.current_batch_index + 1}/{len(self.batch_plan)}: Chuẩn bị đo bài [{current_test['name']}]\n\n"
-                f"Cấu hình cho BS.\n\n"
-                f"Bấm OK để bắt đầu đo."
+                f"Bước {self.current_batch_index + 1}/{len(self.batch_plan)}: Chuẩn bị đo bài [{self.current_profile_name}]\n\n"
+                f"Thời gian đo: {self.duration} giây.\n"
+                f"Thực hiện cấu hình DUT thủ công.\n\n"
+                f"Sau khi hoàn tất cấu hình, bấm OK để bắt đầu đo."
             )
             
             if ready:
-                # 3. Tiến hành kết nối và đo (Gộp phần check IP, kết nối từ start_measurement cũ vào đây)
                 self.connect_and_measure()
             else:
-                # Nếu User bấm Cancel -> Hủy toàn bộ tiến trình Batch
                 self.stop_measurement()
-                messagebox.showinfo("Đã Hủy", "Quá trình đo Batch đã bị hủy bỏ bởi người dùng.")
+                messagebox.showinfo("Đã Hủy", "Quá trình đo đã bị hủy bỏ bởi người dùng.")
         else:
-            # Chạy xong toàn bộ danh sách Batch
             self.stop_measurement()
             self.lbl_current_test.config(text="TEST: NONE")
-            messagebox.showinfo("Hoàn tất", "Tất cả các bài đo trong kế hoạch Batch đã hoàn thành!")
+            messagebox.showinfo("Hoàn tất", "Hoàn thành đo!")
 
     def connect_and_measure(self):
-        """Phần lõi kết nối máy đo (Tách từ hàm start_measurement cũ)"""
+        if self.devices.is_hioki_connected():
+            self.devices.get_hioki().start_integration()
+            self.start_routine()
+            return
+       
         ip = self.ent_ip.get()
         port = int(self.ent_port.get())
         
         try:
-            self.duration = int(self.ent_duration.get())
             self.sample_rate = float(self.ent_sample.get())
             self.max_power = float(self.ent_max_pwr.get())
         except ValueError:
@@ -386,17 +421,26 @@ class MainWindow:
             self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
             self.start_routine()
         else:
-            self.controller = HiokiPW3336Controller(ip, port)
-            success, msg = self.controller.connect()
+            success, msg = self.devices.connect_hioki(ip, port)
             if success:
                 self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
-                self.controller.setup_measure_items()
-                self.controller.setup_measure_items()
-                self.controller.start_integration()
+                self.devices.get_hioki().setup_measure_items()
+                self.devices.get_hioki().start_integration()
                 self.start_routine()
             else:
                 self.lbl_meter_status.config(text="● FAILED", fg=self.colors["status_off"])
-                messagebox.showerror("Lỗi Kết Nối", msg)
+                messagebox.showerror("Lỗi", msg)
+            # self.controller = HiokiPW3336Controller(ip, port)
+            # success, msg = self.controller.connect()
+            # if success:
+            #     self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
+            #     self.controller.setup_measure_items()
+            #     self.controller.setup_measure_items()
+            #     self.controller.start_integration()
+            #     self.start_routine()
+            # else:
+            #     self.lbl_meter_status.config(text="● FAILED", fg=self.colors["status_off"])
+            #     messagebox.showerror("Lỗi Kết Nối", msg)
 
     def start_routine(self):
         """Hàm phụ trợ dọn dẹp UI và kích hoạt luồng chạy"""
@@ -429,7 +473,7 @@ class MainWindow:
         total_power = 0.0
         
         # Đọc tên bài đo từ Combobox để giả lập cho giống thật
-        current_profile = self.cb_profile.get() 
+        current_profile = getattr(self, 'current_profile_name', 'Unknown')
         
         while self.is_measuring:
             elapsed = time.time() - self.start_time
@@ -488,7 +532,7 @@ class MainWindow:
         # 1. LƯU DỮ LIỆU CỦA BÀI VỪA ĐO VÀO KHO
         if hasattr(self, 'data_logs') and self.data_logs:
             self.all_batch_results.append({
-                "test_name": self.cb_profile.get(),
+                "test_name": self.current_profile_name,
                 "max_power": float(self.ent_max_pwr.get()),
                 "logs": list(self.data_logs) 
             })

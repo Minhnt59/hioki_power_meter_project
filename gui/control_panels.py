@@ -8,10 +8,10 @@ from core.device_manager import DeviceManager
 # from core.hioki_controller import HiokiPW3336Controller
 
 class RemoteConsoleWindow:
-    def __init__(self, parent_root, current_ip="192.168.1.10", current_port="3390", callback_on_close=None):
+    def __init__(self, parent_root, current_ip="10.6.6.94", current_port="3300", callback_on_close=None):
         self.window = tk.Toplevel(parent_root)
         self.window.title("Power Meter - Remote Control Console")
-        self.window.geometry("600x680")
+        self.window.geometry("600x500")
         self.window.configure(bg="#F4F6F9")
         
         # Khóa tương tác với cửa sổ chính khi Popup này đang mở (Modal window)
@@ -22,6 +22,7 @@ class RemoteConsoleWindow:
         
         self.current_ip = current_ip
         self.current_port = current_port
+        self.devices = DeviceManager()
         self.callback_on_close = callback_on_close
         
         self.setup_styles()
@@ -73,20 +74,20 @@ class RemoteConsoleWindow:
         self.lbl_status = tk.Label(inner_conn, text="● DISCONNECTED", font=("Arial", 9, "bold"), fg="#EF4444", bg="#FFFFFF")
         self.lbl_status.grid(row=2, column=2, columnspan=2, padx=5, pady=10, sticky="w")
 
-        # ==========================================
-        # 2. MEASUREMENT CHANNEL SELECTION
-        # ==========================================
-        ch_frame = ttk.LabelFrame(self.window, text="Measurement Channel", style="Console.TLabelframe")
-        ch_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        # # ==========================================
+        # # 2. MEASUREMENT CHANNEL SELECTION
+        # # ==========================================
+        # ch_frame = ttk.LabelFrame(self.window, text="Measurement Channel", style="Console.TLabelframe")
+        # ch_frame.pack(fill="both", expand=True, padx=15, pady=5)
         
-        inner_ch = tk.Frame(ch_frame, bg="#FFFFFF")
-        inner_ch.pack(fill="both", expand=True, padx=10, pady=10)
+        # inner_ch = tk.Frame(ch_frame, bg="#FFFFFF")
+        # inner_ch.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Row 1: Channel selection
-        tk.Label(inner_ch, text="Meas. Channel:", bg="#FFFFFF").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.cb_channel = ttk.Combobox(inner_ch, values=["CH1", "CH2", "CH3", "SUM"], width=10, state="readonly")
-        self.cb_channel.set("CH1")
-        self.cb_channel.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        # # Row 1: Channel selection
+        # tk.Label(inner_ch, text="Meas. Channel:", bg="#FFFFFF").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        # self.cb_channel = ttk.Combobox(inner_ch, values=["CH1", "CH2", "CH3", "SUM"], width=10, state="readonly")
+        # self.cb_channel.set("CH1")
+        # self.cb_channel.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
         # ==========================================
         # 3. KHUNG CMD SCPI
@@ -130,62 +131,93 @@ class RemoteConsoleWindow:
     # CÁC HÀM XỬ LÝ LOGIC
     # ==========================================
     def toggle_connection(self):
-        if not self.is_connected:
-            # Thực hiện kết nối
+        if not self.devices.is_hioki_connected():
             ip = self.ent_ip.get()
-            port = int(self.ent_port.get())
+            port = self.ent_port.get()
             
-            # Khởi tạo class điều khiển (Nếu chưa import file thì dùng socket trực tiếp tạm thời)
-            try:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.sock.settimeout(2.0)
-                self.sock.connect((ip, port))
-                
-                self.is_connected = True
-                self.lbl_status.config(text="● CONNECTED", fg="#22C55E")
+            success, msg = self.devices.connect_hioki(ip, port)
+            
+            if success:
                 self.btn_connect.config(text="Disconnect", bg="#EF4444")
-                self.btn_send.config(state="normal")
-                
-                self.append_response("[System] Connection established.\n")
-            except Exception as e:
-                messagebox.showerror("Connection Error", f"Cannot connect to {ip}:{port}\nError: {e}")
+                self.append_response(f"Connected: {msg}")
+            else:
+                messagebox.showerror("Lỗi", msg)
         else:
-            # Thực hiện ngắt kết nối
-            try:
-                self.sock.close()
-            except:
-                pass
-            self.is_connected = False
-            self.lbl_status.config(text="● DISCONNECTED", fg="#EF4444")
-            self.btn_connect.config(text="Connect", bg="#2563EB")
-            self.btn_send.config(state="disabled")
-            self.append_response("[System] Connection closed.\n")
+            self.devices.disconnect_hioki()
+            self.btn_connect.config(text="Connect", bg="#10B981")
+            self.append_response("Disconnected.")
 
-    def send_command(self):
-        if not self.is_connected:
-            return
+
+
+        # if not self.is_connected:
+        #     ip = self.ent_ip.get()
+        #     port = int(self.ent_port.get())
             
-        raw_cmd = self.ent_cmd.get().strip()
-        if not raw_cmd:
-            return
-            
-        # Thêm ký tự ngắt dòng CRLF chuẩn của HIOKI SCPI
-        cmd_to_send = raw_cmd + "\r\n"
-        
-        try:
-            self.sock.sendall(cmd_to_send.encode('ascii'))
-            self.append_response(f"> {raw_cmd}\n")
-            
-            # Nếu lệnh chứa dấu hỏi (?), đây là lệnh truy vấn cần chờ đọc phản hồi
-            if "?" in raw_cmd:
-                response = self.sock.recv(4096).decode('ascii').strip()
-                self.append_response(f"< {response}\n")
+        #     # Khởi tạo class điều khiển (Nếu chưa import file thì dùng socket trực tiếp tạm thời)
+        #     try:
+        #         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #         self.sock.settimeout(2.0)
+        #         self.sock.connect((ip, port))
                 
-        except socket.timeout:
-            self.append_response("< [Error] Timeout waiting for response.\n")
-        except Exception as e:
-            self.append_response(f"< [Error] Communication failed: {e}\n")
-            self.toggle_connection() # Ngắt kết nối nếu lỗi mạng
+        #         self.is_connected = True
+        #         self.lbl_status.config(text="● CONNECTED", fg="#22C55E")
+        #         self.btn_connect.config(text="Disconnect", bg="#EF4444")
+        #         self.btn_send.config(state="normal")
+                
+        #         self.append_response("[System] Connection established.\n")
+        #     except Exception as e:
+        #         messagebox.showerror("Connection Error", f"Cannot connect to {ip}:{port}\nError: {e}")
+        # else:
+        #     # Thực hiện ngắt kết nối
+        #     try:
+        #         self.sock.close()
+        #     except:
+        #         pass
+        #     self.is_connected = False
+        #     self.lbl_status.config(text="● DISCONNECTED", fg="#EF4444")
+        #     self.btn_connect.config(text="Connect", bg="#2563EB")
+        #     self.btn_send.config(state="disabled")
+        #     self.append_response("[System] Connection closed.\n")
+
+    def send_command(self, event=None):
+        hioki = self.devices.get_hioki()
+        if not hioki or not hioki.is_connected:
+            messagebox.showwarning("Chưa kết nối", "Vui lòng kết nối máy đo trước!")
+            return
+            
+        cmd = self.ent_cmd.get().strip()
+        if not cmd: return
+        self.append_response(f"> {cmd}")
+        self.ent_cmd.delete(0, tk.END)
+        
+        if "?" in cmd:
+            self.append_response(f"< {hioki.query(cmd)}")
+        else:
+            hioki.send_command(cmd)
+        # if not self.is_connected:
+        #     return
+            
+        # raw_cmd = self.ent_cmd.get().strip()
+        # if not raw_cmd:
+        #     return
+            
+        # # Thêm ký tự ngắt dòng CRLF chuẩn của HIOKI SCPI
+        # cmd_to_send = raw_cmd + "\r\n"
+        
+        # try:
+        #     self.sock.sendall(cmd_to_send.encode('ascii'))
+        #     self.append_response(f"> {raw_cmd}\n")
+            
+        #     # Nếu lệnh chứa dấu hỏi (?), đây là lệnh truy vấn cần chờ đọc phản hồi
+        #     if "?" in raw_cmd:
+        #         response = self.sock.recv(4096).decode('ascii').strip()
+        #         self.append_response(f"< {response}\n")
+                
+        # except socket.timeout:
+        #     self.append_response("< [Error] Timeout waiting for response.\n")
+        # except Exception as e:
+        #     self.append_response(f"< [Error] Communication failed: {e}\n")
+        #     self.toggle_connection() # Ngắt kết nối nếu lỗi mạng
 
     def append_response(self, text):
         """Hàm hỗ trợ ghi log vào khung Response"""
@@ -200,17 +232,17 @@ class RemoteConsoleWindow:
             "model": self.cb_model.get(),
             "ip": self.ent_ip.get(),
             "port": self.ent_port.get(),
-            "channel": self.cb_channel.get(),
-            "controller": getattr(self, 'controller', None), # <--- NÉM KẾT NỐI RA NGOÀI
+            # "channel": self.cb_channel.get(),
+            "controller": getattr(self, 'controller', None),
             "is_connected": self.is_connected
         }
 
-        # 2. Đóng socket thử nghiệm (nếu có)
-        if self.is_connected:
-            try:
-                self.sock.close()
-            except:
-                pass
+        # # 2. Đóng socket thử nghiệm (nếu có)
+        # if self.is_connected:
+        #     try:
+        #         self.sock.close()
+        #     except:
+        #         pass
                 
         cb = self.callback_on_close
         self.window.grab_release()
@@ -383,13 +415,14 @@ class DutControlWindow:
 # BATCH CONTROL PANEL
 # ==========================================
 class BatchConfigWindow:
-    def __init__(self, parent_root, callback_on_ok=None):
+    def __init__(self, parent_root, initial_config=None, callback_on_ok=None):
         self.window = tk.Toplevel(parent_root)
         self.window.title("Batch Configuration (Multi-tests)")
         self.window.geometry("550x380")
         self.window.configure(bg="#F4F6F9")
         self.window.grab_set()
         
+        self.initial_config = initial_config
         self.callback_on_ok = callback_on_ok
         
         self.setup_styles()
@@ -414,35 +447,49 @@ class BatchConfigWindow:
         tk.Label(inner_frame, text="Duration (s)", bg="#FFFFFF", font=("Arial", 9, "bold")).grid(row=0, column=2, padx=5, pady=5)
         tk.Label(inner_frame, text="ETSI Guideline", bg="#FFFFFF", font=("Arial", 9, "bold")).grid(row=0, column=3, padx=5, pady=5, sticky="w")
 
-        # Khai báo các biến
-        self.tests = [
-            {"name": "Full Load", "default_time": "3600", "guide": "> 1 hr"},
-            {"name": "Busy Hour Load", "default_time": "28800", "guide": "8 hrs"},
-            {"name": "Medium Load", "default_time": "36000", "guide": "10 hrs"},
-            {"name": "Low Load", "default_time": "21600", "guide": "6 hrs"}
-        ]
+        # KNạp cấu hình
+        if self.initial_config:
+            self.tests = self.initial_config
+        
+        else:
+            self.tests = [
+                {"name": "Full Load", "default_time": "3600", "guide": "> 1 hr"},
+                {"name": "Load 70%", "default_time": "3600", "guide": ""},
+                {"name": "Busy Hour Load", "default_time": "28800", "guide": "8 hrs"},
+                {"name": "Medium Load", "default_time": "36000", "guide": "10 hrs"},
+                {"name": "Low Load", "default_time": "21600", "guide": "6 hrs"}
+            ]
         
         self.vars_check = []
         self.entries_time = []
+        self.labels_name = []
+        self.labels_guide = []
 
         # Render các dòng
         for i, test in enumerate(self.tests, start=1):
-            var_chk = tk.BooleanVar(value=True)
+            var_chk = tk.BooleanVar(value=test.get("checked", True))
             self.vars_check.append(var_chk)
             
-            # Checkbox
-            tk.Checkbutton(inner_frame, variable=var_chk, bg="#FFFFFF").grid(row=i, column=0, padx=5, pady=5)
-            # Tên bài đo
-            tk.Label(inner_frame, text=test["name"], bg="#FFFFFF").grid(row=i, column=1, padx=5, pady=5, sticky="w")
+            # Checkbox gọi hàm toggle khi click
+            chk = tk.Checkbutton(inner_frame, variable=var_chk, bg="#FFFFFF", command=lambda idx=i-1: self.toggle_row_state(idx))
+            chk.grid(row=i, column=0, padx=5, pady=5)
             
-            # Ô nhập thời gian
+            lbl_name = tk.Label(inner_frame, text=test["name"], bg="#FFFFFF")
+            lbl_name.grid(row=i, column=1, padx=5, pady=5, sticky="w")
+            self.labels_name.append(lbl_name)  # <--- ĐẢM BẢO CÓ DÒNG NÀY
+            
             ent_time = ttk.Entry(inner_frame, width=10, justify="center")
-            ent_time.insert(0, test["default_time"])
+            duration_value = test.get("duration", test.get("default_time", "3600"))
+            ent_time.insert(0, duration_value)
             ent_time.grid(row=i, column=2, padx=5, pady=5)
-            self.entries_time.append(ent_time)
+            self.entries_time.append(ent_time) # <--- ĐẢM BẢO CÓ DÒNG NÀY
             
-            # Chỉ dẫn ETSI
-            tk.Label(inner_frame, text=f"({test['guide']})", bg="#FFFFFF", fg="#6B7280", font=("Arial", 9, "italic")).grid(row=i, column=3, padx=5, pady=5, sticky="w")
+            lbl_guide = tk.Label(inner_frame, text=f"({test.get('guide', '')})", bg="#FFFFFF", font=("Arial", 9, "italic"))
+            lbl_guide.grid(row=i, column=3, padx=5, pady=5, sticky="w")
+            self.labels_guide.append(lbl_guide) # <--- ĐÂY LÀ DÒNG BẠN ĐANG BỊ THIẾU
+            
+            # Cập nhật màu sắc/trạng thái ngay từ lúc mở form
+            self.toggle_row_state(i-1)
 
         # NÚT HÀNH ĐỘNG
         btn_frame = tk.Frame(self.window, bg="#F4F6F9")
@@ -453,22 +500,40 @@ class BatchConfigWindow:
         
         btn_ok = tk.Button(btn_frame, text="OK", font=("Arial", 9, "bold"), bg="#10B981", fg="white", relief="flat", width=10, command=self.on_ok_clicked)
         btn_ok.pack(side="right", padx=5)
+    
+    def toggle_row_state(self, index):
+        """Làm mờ chữ và khóa ô nhập liệu nếu bị bỏ check"""
+        is_checked = self.vars_check[index].get()
+        if is_checked:
+            self.labels_name[index].config(fg="#000000")       # Chữ đen
+            self.labels_guide[index].config(fg="#6B7280")      # Chữ xám đậm
+            self.entries_time[index].config(state="normal")    # Mở khóa ô text
+        else:
+            self.labels_name[index].config(fg="#D1D5DB")       # Chữ xám nhạt (mờ)
+            self.labels_guide[index].config(fg="#D1D5DB")      # Chữ xám nhạt
+            self.entries_time[index].config(state="disabled")  # Khóa ô text
 
     def on_ok_clicked(self):
-        batch_plan = []
-        for i, test in enumerate(self.tests):
-            if self.vars_check[i].get():
-                batch_plan.append({
-                    "name": test["name"],
-                    "duration": self.entries_time[i].get()
-                })
+        full_config = []
+        has_checked = False
         
-        if not batch_plan:
+        for i, test in enumerate(self.tests):
+            checked = self.vars_check[i].get()
+            if checked: has_checked = True
+            
+            full_config.append({
+                "name": test["name"],
+                "duration": self.entries_time[i].get(),
+                "guide": test.get("guide", ""),
+                "checked": checked
+            })
+        
+        if not has_checked:
             messagebox.showwarning("Cảnh báo", "Bạn phải chọn ít nhất 1 bài đo!")
             return
             
         if self.callback_on_ok:
-            self.callback_on_ok(batch_plan)
+            self.callback_on_ok(full_config)
         self.window.destroy()
 
 # ==========================================

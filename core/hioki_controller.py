@@ -42,6 +42,7 @@ class HiokiPW3336Controller:
         if not self.is_connected: return False
         try:
             self.sock.sendall((cmd + "\r\n").encode('ascii'))
+            print(f"[PW3336]: ➔ {cmd}")
             return True
         except:
             self.is_connected = False
@@ -58,12 +59,15 @@ class HiokiPW3336Controller:
         except:
             return ""
 
-    def setup_measure_items(self):
-        """Cấu hình HIOKI chỉ trả về đúng U, I, P và WP của Kênh 1 (CH1)"""
+    def setup_measure_items(self, channel = "CH1"):
+        """Cấu hình HIOKI chỉ trả về đúng U, I, P và WP của kênh đo mong muốn"""
         # Xóa các thiết lập cũ
         self.send_command("*CLS")
-        # Yêu cầu xuất: Điện áp (U1), Dòng (I1), Công suất (P1), Điện năng (WP1)
-        self.send_command(":DATA:ITEM U1,I1,P1,WP1")
+
+        ch_idx = channel.replace("CH", "") if channel != "SUM" else "sum"
+        
+        cmd = f":DATA:ITEM U{ch_idx},I{ch_idx},P{ch_idx},WP{ch_idx}"
+        self.send_command(cmd)        
         
     def start_integration(self):
         """Khởi động bộ đếm tích phân (Integration) trên phần cứng"""
