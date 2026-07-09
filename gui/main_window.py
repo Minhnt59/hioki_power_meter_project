@@ -79,15 +79,15 @@ class MainWindow:
         self.cb_model.set("Hioki pw3336")
         self.cb_model.grid(row=0, column=1, padx=5, pady=3)
 
-        self.ent_ip = self.create_input_row(meter_form, "IP Address:", "192.168.1.10", 1)
-        self.ent_port = self.create_input_row(meter_form, "Port:", "3390", 2)
+        self.ent_ip = self.create_input_row(meter_form, "IP Address:", "10.6.6.94", 1)
+        self.ent_port = self.create_input_row(meter_form, "Port:", "3300", 2)
         
         meter_ctrl = tk.Frame(frame_meter, bg=self.colors["bg_card"])
         meter_ctrl.pack(side="right", fill="y", padx=10, pady=5)
         self.lbl_meter_status = tk.Label(meter_ctrl, text="● DISCONNECTED", font=("Helvetica", 10, "bold"), fg=self.colors["status_off"], bg=self.colors["bg_card"])
         self.lbl_meter_status.pack(pady=(5, 10))
         tk.Button(meter_ctrl, text="Connection", font=("Arial", 9), bg="#F3F4F6", command=self.open_meter_remote).pack()
-        self.var_sim_mode = tk.BooleanVar(value=True) # Mặc định bật chế độ giả lập để test
+        self.var_sim_mode = tk.BooleanVar(value=False) # Mặc định bật chế độ giả lập để test
         tk.Checkbutton(meter_ctrl, text="Simulation Mode", variable=self.var_sim_mode, bg=self.colors["bg_card"], font=("Arial", 8, "italic")).pack()
         
         # MEASUREMENT INFO
@@ -212,6 +212,59 @@ class MainWindow:
             
         print(f"[UI Updated] Thiết lập máy đo: {data['model']} | {data['ip']}:{data['port']} | Kênh: {selected_ch}")
 
+        passed_controller = data.get("controller")
+        is_connected_from_console = data.get("is_connected")
+
+        # ========================================================
+        # TRƯỜNG HỢP 1: KẾ THỪA LUÔN KẾT NỐI TỪ CỬA SỔ POPUP
+        # ========================================================
+        if is_connected_from_console and passed_controller:
+            # Ngắt kết nối cũ của MainWindow (nếu đang có) để tránh xung đột
+            if hasattr(self, 'controller') and self.controller and self.controller != passed_controller:
+                self.controller.disconnect()
+
+            # Nhận bàn giao kết nối từ Popup
+            self.controller = passed_controller
+            
+            # Đổi đèn trạng thái thành màu xanh ngay lập tức
+            self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
+            
+            # Thiết lập các thông số đo 
+            self.controller.setup_measure_items()
+            # messagebox.showinfo("Kế thừa", "Đã giữ nguyên trạng thái kết nối từ cửa sổ cấu hình!")
+            return
+
+        # Nếu đang ở chế độ Simulation thì bỏ qua không kết nối thật
+        if self.var_sim_mode.get():
+            self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
+            messagebox.showinfo("Mô phỏng", "Đã cập nhật cấu hình. App đang ở chế độ mô phỏng nên không kết nối thiết bị thật.")
+            return
+
+        # Đổi Label trạng thái thành "Đang kết nối..."
+        self.lbl_meter_status.config(text="● CONNECTING...", fg="#6B7280")
+        
+        # 1. Viết hàm chạy ngầm thao tác mạng
+        def _bg_connect_task():
+            self.controller = HiokiPW3336Controller(data["ip"], data["port"])
+            success, msg = self.controller.connect()
+            
+            # Dùng after(0, ...) để đẩy kết quả về luồng giao diện chính một cách an toàn
+            self.root.after(0, _on_connect_finished, success, msg)
+
+        # 2. Viết hàm cập nhật UI khi mạng chạy xong
+        def _on_connect_finished(success, msg):
+            if success:
+                self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
+                self.controller.setup_measure_items()
+                messagebox.showinfo("Thành công", f"Đã kết nối thành công tới máy đo HIOKI tại {data['ip']}:{data['port']}")
+            else:
+                self.lbl_meter_status.config(text="● FAILED", fg=self.colors["status_off"])
+                messagebox.showerror("Lỗi Kết Nối", f"Không thể kết nối tới máy đo HIOKI.\n\nChi tiết: {msg}")
+
+        # 3. KÍCH HOẠT LUỒNG NGẦM
+        import threading # (Đảm bảo đã import thư viện này)
+        threading.Thread(target=_bg_connect_task, daemon=True).start()
+
     def open_batch_config(self):
         # Truyền callback để lấy danh sách bài đo từ Batch Window về
         BatchConfigWindow(self.root, callback_on_ok=self.apply_batch_plan)
@@ -299,8 +352,8 @@ class MainWindow:
             ready = messagebox.askokcancel(
                 "Cấu hình Base Station",
                 f"Bước {self.current_batch_index + 1}/{len(self.batch_plan)}: Chuẩn bị đo bài [{current_test['name']}]\n\n"
-                f"Vui lòng đảm bảo thiết bị DU/RRU đã được thiết lập đúng Profile tải.\n\n"
-                f"Bấm OK để tiến hành kết nối máy đo HIOKI và bắt đầu ghi dữ liệu."
+                f"Cấu hình cho BS.\n\n"
+                f"Bấm OK để bắt đầu đo."
             )
             
             if ready:
@@ -338,6 +391,8 @@ class MainWindow:
             if success:
                 self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
                 self.controller.setup_measure_items()
+                self.controller.setup_measure_items()
+                self.controller.start_integration()
                 self.start_routine()
             else:
                 self.lbl_meter_status.config(text="● FAILED", fg=self.colors["status_off"])
@@ -384,8 +439,22 @@ class MainWindow:
                 break
 
             data = None
+            p_avg = 0.0
+            
             if not self.var_sim_mode.get() and self.controller:
-                data = self.controller.read_measurements() # Đọc máy thật
+                if not self.controller.is_connected:
+                    self.root.after(0, lambda: messagebox.showerror("Lỗi", "Mất kết nối với máy đo HIOKI!"))
+                    self.is_measuring = False
+                    break
+                data = self.controller.read_measurements()
+                if data:
+                    # HIOKI trả WP theo đơn vị Watthour (Wh).
+                    # P_avg (W) = WP (Wh) / Thời gian (Giờ)
+                    hours = elapsed / 3600.0
+                    if hours > 0:
+                        p_avg = data['WP'] / hours
+                    else:
+                        p_avg = data['P']
             else:
                 # --- GIẢ LẬP DỮ LIỆU THEO TẢI ETSI ---
                 volt = random.uniform(-48.2, -47.8) # Điện áp DC trạm viễn thông luôn quanh -48V
@@ -426,6 +495,7 @@ class MainWindow:
 
         # Ngắt kết nối thiết bị sau mỗi bài
         if self.controller:
+            self.controller.stop_integration()
             self.controller.disconnect()
             
         # (Tùy chọn): Tại đây có thể chèn dòng code gọi tính năng Auto-Export báo cáo 

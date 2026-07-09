@@ -2,121 +2,93 @@ import socket
 import time
 
 class HiokiPW3336Controller:
-    """
-    Class điều khiển máy đo công suất HIOKI PW3336 qua mạng LAN (Raw Socket)
-    """
-    def __init__(self, ip_address, port=3390, timeout=3.0):
-        self.ip = ip_address
-        self.port = port
+    def __init__(self, ip, port=3300, timeout=5.0):
+        self.ip = ip
+        self.port = int(port)
         self.timeout = timeout
         self.sock = None
         self.is_connected = False
+        self.num_meas_channels = 1  # Số kênh đo của máy Hioki PW3336
+        self.current_channel = 1  # Mặc định là kênh 1
 
     def connect(self):
-        """Khởi tạo kết nối Socket tới máy đo"""
+        """Mở kết nối TCP/IP tới máy đo và xác thực IDN"""
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.settimeout(self.timeout)
             self.sock.connect((self.ip, self.port))
-            self.is_connected = True
             
-            # Xóa bộ đệm lỗi và kiểm tra kết nối bằng lệnh nhận diện
-            self.send_command("*CLS") 
             idn = self.query("*IDN?")
-            return True, f"Đã kết nối thành công: {idn}"
-        except socket.timeout:
-            self.is_connected = False
-            return False, "Lỗi: Timeout khi kết nối. Vui lòng kiểm tra lại IP/Port."
+            print(f"IDN response: {idn}")
+            if "HIOKI" in idn:
+                self.is_connected = True
+                return True, f"Connected to {idn}"
+            else:
+                return False, "Thiết bị phản hồi nhưng không phải HIOKI."
         except Exception as e:
-            self.is_connected = False
-            return False, f"Lỗi kết nối: {str(e)}"
+            return False, f"Lỗi kết nối: {e}"
 
     def disconnect(self):
-        """Đóng kết nối"""
+        """Đóng kết nối an toàn"""
         if self.sock:
             try:
                 self.sock.close()
             except:
                 pass
-        self.sock = None
         self.is_connected = False
 
     def send_command(self, cmd):
-        """Gửi lệnh thiết lập (Không chờ phản hồi)"""
-        if not self.is_connected:
-            return False
+        """Gửi lệnh SCPI (Có kèm ký tự ngắt dòng chuẩn CRLF)"""
+        if not self.is_connected: return False
         try:
-            # Máy đo Hioki yêu cầu kết thúc chuỗi lệnh bằng CRLF (\r\n)
             self.sock.sendall((cmd + "\r\n").encode('ascii'))
             return True
-        except Exception as e:
-            print(f"Lỗi gửi lệnh: {e}")
+        except:
             self.is_connected = False
             return False
 
-    def query(self, cmd, buffer_size=4096):
-        """Gửi lệnh truy vấn và đọc dữ liệu trả về"""
-        if not self.send_command(cmd):
-            return None
-        try:
-            response = self.sock.recv(buffer_size).decode('ascii').strip()
-            return response
-        except socket.timeout:
-            print("Lỗi: Timeout khi chờ dữ liệu trả về.")
-            return None
-        except Exception as e:
-            print(f"Lỗi nhận dữ liệu: {e}")
-            self.is_connected = False
-            return None
+    def query(self, cmd):
+        """Gửi lệnh và chờ đọc kết quả trả về"""
+        if not self.send_command(cmd): return ""
 
-    # ==========================================
-    # CÁC HÀM ĐIỀU KHIỂN CHỨC NĂNG CỤ THỂ (SCPI)
-    # ==========================================
+        time.sleep(1)
+        try:
+            response = self.sock.recv(4096).decode('ascii').strip()
+            return response
+        except:
+            return ""
 
     def setup_measure_items(self):
-        """
-        Cấu hình các tham số cần đọc (Điện áp, Dòng điện, Công suất Tác dụng).
-        Với ETSI 202 706-1 của RRU thường đo nguồn DC.
-        """
-        # Đặt cấu hình đầu ra của lệnh :MEAS? chỉ trả về U, I, P
-        cmd = ":MEASURE:ITEM U,I,P"
-        return self.send_command(cmd)
-
-    def read_measurements(self):
-        """
-        Đọc giá trị đo tức thời
-        Trả về dictionary: {'U': float, 'I': float, 'P': float}
-        """
-        response = self.query(":MEASURE?")
-        if response:
-            try:
-                # Dữ liệu Hioki trả về dạng CSV: "48.05,14.20,682.31"
-                data = response.split(",")
-                if len(data) >= 3:
-                    return {
-                        'U': float(data[0]),
-                        'I': float(data[1]),
-                        'P': float(data[2])
-                    }
-            except ValueError:
-                print(f"Lỗi parse dữ liệu từ chuỗi: {response}")
-        return None
-
+        """Cấu hình HIOKI chỉ trả về đúng U, I, P và WP của Kênh 1 (CH1)"""
+        # Xóa các thiết lập cũ
+        self.send_command("*CLS")
+        # Yêu cầu xuất: Điện áp (U1), Dòng (I1), Công suất (P1), Điện năng (WP1)
+        self.send_command(":DATA:ITEM U1,I1,P1,WP1")
+        
     def start_integration(self):
-        """Bắt đầu tính toán tích phân (Dùng cho đo Công suất trung bình / Điện năng)"""
-        self.send_command(":INTEGRATE:RESET") # Reset bộ đếm trước khi đo
-        time.sleep(0.5)
-        return self.send_command(":INTEGRATE:STATE START")
-
+        """Khởi động bộ đếm tích phân (Integration) trên phần cứng"""
+        self.send_command(":INTEG:RES")
+        self.send_command(":INTEG:STAT START")
+        
     def stop_integration(self):
-        """Dừng tính toán tích phân"""
-        return self.send_command(":INTEGRATE:STATE STOP")
-
-    def read_integration(self):
-        """
-        Đọc thời gian đã chạy và Công suất trung bình/Điện năng tích lũy.
-        (Cần cấu hình ITEM chứa TIME và WP/W trước đó).
-        """
-        # Tạm thời truy vấn điện năng tác dụng (WP) và thời gian (TIME)
-        # Tùy thuộc vào lệnh SCPI cụ thể của PW3336
-        pass
+        """Dừng bộ đếm tích phân"""
+        self.send_command(":INTEG:STAT STOP")
+        
+    def read_measurements(self):
+        """Gửi lệnh :MEASure? để lấy mảng dữ liệu thực"""
+        raw_data = self.query(":MEAS?")
+        if not raw_data: return None
+        
+        try:
+            # Máy đo trả về chuỗi CSV (VD: "48.05, 10.12, 485.7, 1.25")
+            parts = raw_data.split(',')
+            if len(parts) >= 3:
+                return {
+                    'U': float(parts[0]),
+                    'I': float(parts[1]),
+                    'P': float(parts[2]),
+                    'WP': float(parts[3]) if len(parts) >= 4 else 0.0
+                }
+        except Exception as e:
+            print(f"Lỗi phân tích dữ liệu SCPI: {e}")
+        return None

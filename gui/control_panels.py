@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
 import socket
 import os
+from tkinter import ttk, messagebox, filedialog
+from core.device_manager import DeviceManager
 
 # Nếu bạn để file này ở gui/control_panels.py, hãy import controller vào:
 # from core.hioki_controller import HiokiPW3336Controller
@@ -193,27 +194,30 @@ class RemoteConsoleWindow:
     
     def on_close_clicked(self):
         """Hàm xử lý khi bấm nút Close hoặc bấm X đỏ"""
-        # Nếu đã truyền hàm callback từ cửa sổ chính sang
-        if self.callback_on_close:
-            # Gói các dữ liệu cần truyền về vào 1 dictionary
-            data_to_return = {
-                "model": self.cb_model.get(),
-                "ip": self.ent_ip.get(),
-                "port": self.ent_port.get(),
-                "channel": self.cb_channel.get()
-            }
-            # Gọi hàm callback, ném data về cho cửa sổ chính
-            self.callback_on_close(data_to_return)
         
-        # Đóng kết nối socket nếu đang mở
+        # 1. Đọc và gom dữ liệu vào biến TRƯỚC khi cửa sổ bị hủy
+        data_to_return = {
+            "model": self.cb_model.get(),
+            "ip": self.ent_ip.get(),
+            "port": self.ent_port.get(),
+            "channel": self.cb_channel.get(),
+            "controller": getattr(self, 'controller', None), # <--- NÉM KẾT NỐI RA NGOÀI
+            "is_connected": self.is_connected
+        }
+
+        # 2. Đóng socket thử nghiệm (nếu có)
         if self.is_connected:
             try:
                 self.sock.close()
             except:
                 pass
                 
-        # Phá hủy cửa sổ con
+        cb = self.callback_on_close
+        self.window.grab_release()
         self.window.destroy()
+
+        if cb:
+            cb(data_to_return)
 
 # ==========================================
 # DUT CONTROL PANEL
@@ -247,7 +251,7 @@ class DutControlWindow:
         inner_conn.pack(fill="both", expand=True, padx=10, pady=5)
 
         tk.Label(inner_conn, text="Server Model:", bg="#FFFFFF", anchor="e").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.cb_model = ttk.Combobox(inner_conn, values=["O-RAN DU Server", "Generic Linux Server"], width=18, state="readonly")
+        self.cb_model = ttk.Combobox(inner_conn, values=["O-RAN DU Server"], width=18, state="readonly")
         self.cb_model.set("O-RAN DU Server")
         self.cb_model.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
