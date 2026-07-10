@@ -156,12 +156,16 @@ class RemoteConsoleWindow:
             
             if success:
                 self.btn_connect.config(text="Disconnect", bg="#EF4444")
+                self.lbl_status.config(text="● CONNECTED", fg="#22C55E")
                 self.append_response(f"Connected: {msg}")
+                self.btn_send.config(state="normal")
             else:
                 messagebox.showerror("Lỗi", msg)
         else:
             self.devices.disconnect_hioki()
             self.btn_connect.config(text="Connect", bg="#10B981")
+            self.lbl_status.config(text="● DISCONNECTED", fg="#EF4444")
+            self.btn_send.config(state="disabled")
             self.append_response("Disconnected.")
 
 
@@ -201,6 +205,9 @@ class RemoteConsoleWindow:
         if not hioki or not hioki.is_connected:
             messagebox.showwarning("Chưa kết nối", "Vui lòng kết nối máy đo trước!")
             return
+
+        # Xóa nội dung cũ trước
+        self.txt_response.delete(1.0, tk.END) 
             
         cmd = self.ent_cmd.get().strip()
         if not cmd: return
@@ -208,7 +215,7 @@ class RemoteConsoleWindow:
         self.ent_cmd.delete(0, tk.END)
         
         if "?" in cmd:
-            self.append_response(f"< {hioki.query(cmd)}")
+            self.append_response(f"< {hioki.query(cmd)}\n")
         else:
             hioki.send_command(cmd)
         # if not self.is_connected:
@@ -236,9 +243,9 @@ class RemoteConsoleWindow:
         #     self.append_response(f"< [Error] Communication failed: {e}\n")
         #     self.toggle_connection() # Ngắt kết nối nếu lỗi mạng
 
-    def append_response(self, text):
-        """Hàm hỗ trợ ghi log vào khung Response"""
-        self.txt_response.insert(tk.END, text)
+    def append_response(self, text, clear_first=True):
+        # Chèn nội dung mới (thêm \n để mỗi log nằm trên 1 dòng)
+        self.txt_response.insert(tk.END, text + "\n") 
         self.txt_response.see(tk.END) # Tự động cuộn xuống dòng mới nhất
     
     def on_close_clicked(self):

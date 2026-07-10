@@ -18,14 +18,20 @@ class HiokiPW3336Controller:
             self.sock.settimeout(self.timeout)
             self.sock.connect((self.ip, self.port))
             
+            self.is_connected = True
+
+            self.send_command("*CLS")
             idn = self.query("*IDN?")
             print(f"IDN response: {idn}")
             if "HIOKI" in idn:
-                self.is_connected = True
                 return True, f"Connected to {idn}"
             else:
-                return False, "Thiết bị phản hồi nhưng không phải HIOKI."
+                # Nếu không phải Hioki, đóng socket và set lại cờ False
+                self.disconnect() 
+                return False, f"Thiết bị phản hồi nhưng không phải HIOKI. (Response: {idn})"
+            
         except Exception as e:
+            self.is_connected = False
             return False, f"Lỗi kết nối: {e}"
 
     def disconnect(self):
@@ -42,7 +48,7 @@ class HiokiPW3336Controller:
         if not self.is_connected: return False
         try:
             self.sock.sendall((cmd + "\r\n").encode('ascii'))
-            print(f"[PW3336]: ➔ {cmd}")
+            print(f"[PW3336]: ➡️ {cmd}")
             return True
         except:
             self.is_connected = False
@@ -55,6 +61,7 @@ class HiokiPW3336Controller:
         time.sleep(1)
         try:
             response = self.sock.recv(4096).decode('ascii').strip()
+            print(f"[PW3336]: ⬅️ {cmd}")
             return response
         except:
             return ""
@@ -75,7 +82,7 @@ class HiokiPW3336Controller:
 
     def read_measurements(self):
         """Đọc và bóc tách dữ liệu thành Dictionary theo từng kênh"""
-        raw_data = self.query(":MEASure?")
+        raw_data = self.query(":MEAS?")
         if not raw_data: return None
         
         try:
@@ -106,21 +113,21 @@ class HiokiPW3336Controller:
         """Dừng bộ đếm tích phân"""
         self.send_command(":INTEG:STAT STOP")
         
-    def read_measurements(self):
-        """Gửi lệnh :MEASure? để lấy mảng dữ liệu thực"""
-        raw_data = self.query(":MEAS?")
-        if not raw_data: return None
+    # def read_measurements(self):
+    #     """Gửi lệnh :MEASure? để lấy mảng dữ liệu thực"""
+    #     raw_data = self.query(":MEAS?")
+    #     if not raw_data: return None
         
-        try:
-            # Máy đo trả về chuỗi CSV (VD: "48.05, 10.12, 485.7, 1.25")
-            parts = raw_data.split(',')
-            if len(parts) >= 3:
-                return {
-                    'U': float(parts[0]),
-                    'I': float(parts[1]),
-                    'P': float(parts[2]),
-                    'WP': float(parts[3]) if len(parts) >= 4 else 0.0
-                }
-        except Exception as e:
-            print(f"Lỗi phân tích dữ liệu SCPI: {e}")
-        return None
+    #     try:
+    #         # Máy đo trả về chuỗi CSV (VD: "48.05, 10.12, 485.7, 1.25")
+    #         parts = raw_data.split(',')
+    #         if len(parts) >= 3:
+    #             return {
+    #                 'U': float(parts[0]),
+    #                 'I': float(parts[1]),
+    #                 'P': float(parts[2]),
+    #                 'WP': float(parts[3]) if len(parts) >= 4 else 0.0
+    #             }
+    #     except Exception as e:
+    #         print(f"Lỗi phân tích dữ liệu SCPI: {e}")
+    #     return None
