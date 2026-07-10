@@ -59,15 +59,43 @@ class HiokiPW3336Controller:
         except:
             return ""
 
-    def setup_measure_items(self, channel = "CH1"):
-        """Cấu hình HIOKI chỉ trả về đúng U, I, P và WP của kênh đo mong muốn"""
-        # Xóa các thiết lập cũ
+    def setup_measure_items(self, channels_list):
+        """Cấu hình HIOKI trả về dữ liệu của TẤT CẢ các kênh được truyền vào (dạng mảng)"""
         self.send_command("*CLS")
-
-        ch_idx = channel.replace("CH", "") if channel != "SUM" else "sum"
+        self.active_channels = channels_list # Lưu lại mảng để lát nữa đọc dữ liệu
         
-        cmd = f":DATA:ITEM U{ch_idx},I{ch_idx},P{ch_idx},WP{ch_idx}"
-        self.send_command(cmd)        
+        items = []
+        for ch in channels_list:
+            ch_idx = ch.replace("CH", "") if ch != "SUM" else "sum"
+            items.append(f"U{ch_idx},I{ch_idx},P{ch_idx},WP{ch_idx}")
+            
+        cmd = ":DATAout:ITEM " + ",".join(items)
+        self.send_command(cmd)
+        print(f"Đã cấu hình HIOKI đo đồng thời: {channels_list}")
+
+    def read_measurements(self):
+        """Đọc và bóc tách dữ liệu thành Dictionary theo từng kênh"""
+        raw_data = self.query(":MEASure?")
+        if not raw_data: return None
+        
+        try:
+            parts = raw_data.split(',')
+            result = {}
+            idx = 0
+            
+            for ch in self.active_channels:
+                if idx + 3 < len(parts):
+                    result[ch] = {
+                        'U': float(parts[idx]),
+                        'I': float(parts[idx+1]),
+                        'P': float(parts[idx+2]),
+                        'WP': float(parts[idx+3]) if len(parts) > idx+3 else 0.0
+                    }
+                idx += 4 # Nhảy 4 giá trị để sang kênh tiếp theo
+            return result
+        except Exception as e:
+            print(f"Lỗi phân tích dữ liệu SCPI: {e}")
+            return None
         
     def start_integration(self):
         """Khởi động bộ đếm tích phân (Integration) trên phần cứng"""

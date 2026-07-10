@@ -11,7 +11,7 @@ class RemoteConsoleWindow:
     def __init__(self, parent_root, current_ip="10.6.6.94", current_port="3300", callback_on_close=None):
         self.window = tk.Toplevel(parent_root)
         self.window.title("Power Meter - Remote Control Console")
-        self.window.geometry("600x500")
+        self.window.geometry("600x550")
         self.window.configure(bg="#F4F6F9")
         
         # Khóa tương tác với cửa sổ chính khi Popup này đang mở (Modal window)
@@ -73,6 +73,23 @@ class RemoteConsoleWindow:
 
         self.lbl_status = tk.Label(inner_conn, text="● DISCONNECTED", font=("Arial", 9, "bold"), fg="#EF4444", bg="#FFFFFF")
         self.lbl_status.grid(row=2, column=2, columnspan=2, padx=5, pady=10, sticky="w")
+
+        # ==========================================
+        # 2. CẤU HÌNH KÊNH ĐO (MEASUREMENT CHANNELS)
+        # ==========================================
+        ch_frame = ttk.LabelFrame(self.window, text="Measurement Channels", style="Console.TLabelframe")
+        ch_frame.pack(fill="x", padx=15, pady=5)
+        
+        inner_ch = tk.Frame(ch_frame, bg="#FFFFFF")
+        inner_ch.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        self.var_ch1 = tk.BooleanVar(value=True)  # Mặc định tick kênh 1
+        self.var_ch2 = tk.BooleanVar(value=False)
+        self.var_ch3 = tk.BooleanVar(value=False)
+        
+        tk.Checkbutton(inner_ch, text="CH1", variable=self.var_ch1, bg="#FFFFFF", font=("Arial", 9, "bold")).pack(side="left", padx=15)
+        tk.Checkbutton(inner_ch, text="CH2", variable=self.var_ch2, bg="#FFFFFF", font=("Arial", 9, "bold")).pack(side="left", padx=15)
+        tk.Checkbutton(inner_ch, text="CH3", variable=self.var_ch3, bg="#FFFFFF", font=("Arial", 9, "bold")).pack(side="left", padx=15)
 
         # # ==========================================
         # # 2. MEASUREMENT CHANNEL SELECTION
@@ -225,14 +242,21 @@ class RemoteConsoleWindow:
         self.txt_response.see(tk.END) # Tự động cuộn xuống dòng mới nhất
     
     def on_close_clicked(self):
-        """Hàm xử lý khi bấm nút Close hoặc bấm X đỏ"""
+        selected_channels = []
+        if self.var_ch1.get(): selected_channels.append("CH1")
+        if self.var_ch2.get(): selected_channels.append("CH2")
+        if self.var_ch3.get(): selected_channels.append("CH3")
+
+        if not selected_channels:
+            messagebox.showwarning("Cảnh báo", "Chọn ít nhất 1 kênh đo!")
+            return
         
         # 1. Đọc và gom dữ liệu vào biến TRƯỚC khi cửa sổ bị hủy
         data_to_return = {
             "model": self.cb_model.get(),
             "ip": self.ent_ip.get(),
             "port": self.ent_port.get(),
-            # "channel": self.cb_channel.get(),
+            "channels": selected_channels,
             "controller": getattr(self, 'controller', None),
             "is_connected": self.is_connected
         }

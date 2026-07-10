@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
+import random
+from datetime import datetime
 import time
 from datetime import datetime
 
@@ -129,7 +131,7 @@ class MainWindow:
 
         # === COMBOBOX CHỌN CHANNEL ===
         # tk.Label(toolbar, text="Channel:", bg=self.colors["bg_card"], font=("Arial", 9, "bold")).pack(side="left", padx=(20, 5))
-        self.cb_channel = ttk.Combobox(toolbar, values=["CH1", "CH2", "CH3", "SUM"], width=5, state="readonly")
+        self.cb_channel = ttk.Combobox(toolbar, values=["CH1", "CH2", "CH3", "SUM"], width=10, state="readonly")
         self.cb_channel.set("CH1")
         self.cb_channel.pack(side="left", padx=10, pady=5)
         
@@ -164,18 +166,23 @@ class MainWindow:
 
         tk.Label(self.status_bar, text="Ready", font=("Arial", 9), bg=self.colors["primary"], fg="white").pack(side="left", padx=10)
 
-        # 2. Label hiển thị đồng hồ thời gian thực
-        self.lbl_realtime = tk.Label(self.status_bar, text="System Time: --:--:--", font=("Arial", 16, "bold"), bg=self.colors["primary"], fg="white")
-        self.lbl_realtime.pack(side="right", padx=20)
+        # -----------------
 
         # --- DATA LOGGING TREEVIEW ---
         table_container = tk.Frame(self.root, bg=self.colors["bg_card"])
         table_container.pack(fill="both", expand=True, padx=10, pady=10)
         
-        columns = ("stt", "sys_time", "meas_time", "volt", "curr", "inst_power", "avg_power", "eval")
+        # Tuple columns
+        columns = ("stt", "sys_time", "meas_time", "channel", "volt", "curr", "inst_power", "avg_power", "eval")
+        
         self.tree = ttk.Treeview(table_container, columns=columns, show="headings", style="Modern.Treeview")
-        headers = ["STT", "System Time", "Elapsed (s)", "Voltage (V)", "Current (A)", "P Inst (W)", "P Avg (W)", "Status"]
-        widths = [50, 150, 100, 100, 100, 120, 120, 100]
+        
+        # Headers và widths đã có đủ 9 phần tử tương ứng với columns
+        headers = ["STT", "System Time", "Elapsed (s)", "Channel", "Voltage (V)", "Current (A)", "P Inst (W)", "P Avg (W)", "Status"]
+        
+        # Điều chỉnh độ rộng cột Channel (80) để dồn không gian cho các cột số liệu
+        widths = [50, 150, 100, 80, 100, 100, 120, 120, 100] 
+        
         for col, text, width in zip(columns, headers, widths):
             self.tree.heading(col, text=text)
             self.tree.column(col, width=width, anchor="center")
@@ -186,6 +193,8 @@ class MainWindow:
         scrollbar.pack(side="right", fill="y")
     
         # Kích hoạt chạy đồng hồ thời gian thực ngay khi mở App
+        self.lbl_realtime = tk.Label(self.status_bar, text=" --:--:--", font=("Arial", 16, "bold"), bg=self.colors["primary"], fg="white")
+        self.lbl_realtime.pack(side="right", padx=20)
         self.update_realtime_clock()
 
     # --- CÁC FUNCTION TRONG BUILTIN-UI ---
@@ -206,90 +215,30 @@ class MainWindow:
         )
     
     def update_meter_config_from_console(self, data):
-        # 1. Cập nhật UI
+        # 1. Cập nhật Textbox IP, Port
         self.ent_ip.delete(0, tk.END)
         self.ent_ip.insert(0, data["ip"])
         self.ent_port.delete(0, tk.END)
         self.ent_port.insert(0, data["port"])
         
+        # 2. XỬ LÝ VÀ LƯU DANH SÁCH KÊNH (CHANNELS)
+        selected_channels = data.get("channels", ["CH1"])
+        self.measured_channels = selected_channels 
+        
+        # 3. COMBOBOX CHỈ LÀM NHIỆM VỤ ĐỔ CHUỖI ĐƠN LẺ ĐỂ VIEW LED
+        self.cb_channel.config(values=self.measured_channels)
+        self.cb_channel.set(self.measured_channels[0])  
+
+        self.on_channel_changed()
+
+        # 4. CẬP NHẬT TRẠNG THÁI UI
         if self.devices.is_hioki_connected():
             self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
-            # Truyền channel hiện tại trên UI vào máy đo
-            self.devices.get_hioki().setup_measure_items(self.cb_channel.get())
         else:
             if not self.var_sim_mode.get():
                 self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
             else:
                 self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
-
-        # # 3. Cập nhật Channel trên Bảng LED
-        # selected_ch = data["channel"]
-        # if selected_ch != "SUM":
-        #     self.lbl_ch_volt.config(text=selected_ch)
-        #     self.lbl_ch_curr.config(text=selected_ch)
-        #     self.lbl_ch_pwr.config(text=selected_ch)
-        
-        # else:
-        #     # Nếu user chỉ đổi IP mà chưa bấm Connect trong Popup
-        #     if not self.var_sim_mode.get():
-        #         self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
-        #     else:
-        #         self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
-
-        # print(f"[UI Updated] Thiết lập máy đo: {data['model']} | {data['ip']}:{data['port']} | Kênh: {selected_ch}")
-
-        # passed_controller = data.get("controller")
-        # is_connected_from_console = data.get("is_connected")
-
-        # # ========================================================
-        # # TRƯỜNG HỢP 1: KẾ THỪA LUÔN KẾT NỐI TỪ CỬA SỔ POPUP
-        # # ========================================================
-        # if is_connected_from_console and passed_controller:
-        #     # Ngắt kết nối cũ của MainWindow (nếu đang có) để tránh xung đột
-        #     if hasattr(self, 'controller') and self.controller and self.controller != passed_controller:
-        #         self.controller.disconnect()
-
-        #     # Nhận bàn giao kết nối từ Popup
-        #     self.controller = passed_controller
-            
-        #     # Đổi đèn trạng thái thành màu xanh ngay lập tức
-        #     self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
-            
-        #     # Thiết lập các thông số đo 
-        #     self.controller.setup_measure_items()
-        #     # messagebox.showinfo("Kế thừa", "Đã giữ nguyên trạng thái kết nối từ cửa sổ cấu hình!")
-        #     return
-
-        # # Nếu đang ở chế độ Simulation thì bỏ qua không kết nối thật
-        # if self.var_sim_mode.get():
-        #     self.lbl_meter_status.config(text="● SIMULATING", fg="#F59E0B")
-        #     messagebox.showinfo("Mô phỏng", "Đã cập nhật cấu hình. App đang ở chế độ mô phỏng nên không kết nối thiết bị thật.")
-        #     return
-
-        # # Đổi Label trạng thái thành "Đang kết nối..."
-        # self.lbl_meter_status.config(text="● CONNECTING...", fg="#6B7280")
-        
-        # 1. Viết hàm chạy ngầm thao tác mạng
-        def _bg_connect_task():
-            self.controller = HiokiPW3336Controller(data["ip"], data["port"])
-            success, msg = self.controller.connect()
-            
-            # Dùng after(0, ...) để đẩy kết quả về luồng giao diện chính một cách an toàn
-            self.root.after(0, _on_connect_finished, success, msg)
-
-        # 2. Viết hàm cập nhật UI khi mạng chạy xong
-        def _on_connect_finished(success, msg):
-            if success:
-                self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
-                self.controller.setup_measure_items()
-                messagebox.showinfo("Thành công", f"Đã kết nối thành công tới máy đo HIOKI tại {data['ip']}:{data['port']}")
-            else:
-                self.lbl_meter_status.config(text="● FAILED", fg=self.colors["status_off"])
-                messagebox.showerror("Lỗi Kết Nối", f"Không thể kết nối tới máy đo HIOKI.\n\nChi tiết: {msg}")
-
-        # 3. KÍCH HOẠT LUỒNG NGẦM
-        import threading # (Đảm bảo đã import thư viện này)
-        threading.Thread(target=_bg_connect_task, daemon=True).start()
 
     def open_batch_config(self):
         initial_config = getattr(self, 'full_batch_config', None)
@@ -344,22 +293,10 @@ class MainWindow:
             self.lbl_countdown.config(text="⏳ 00:00:00")
     
     def on_channel_changed(self, event=None):
-        """Hàm chạy khi người dùng chọn kênh khác trên Combobox"""
         selected_ch = self.cb_channel.get()
-        
-        # 1. Đổi chữ trên giao diện LED (CH1 -> CH2...)
-        if selected_ch != "SUM":
-            self.lbl_ch_volt.config(text=selected_ch)
-            self.lbl_ch_curr.config(text=selected_ch)
-            self.lbl_ch_pwr.config(text=selected_ch)
-        else:
-            self.lbl_ch_volt.config(text="SUM")
-            self.lbl_ch_curr.config(text="SUM")
-            self.lbl_ch_pwr.config(text="SUM")
-            
-        # 2. Nếu máy đo đang kết nối, gửi lệnh bắt máy đo chuyển kênh ngay lập tức
-        if self.devices.is_hioki_connected():
-            self.devices.get_hioki().setup_measure_items(selected_ch)
+        self.lbl_ch_volt.config(text=selected_ch)
+        self.lbl_ch_curr.config(text=selected_ch)
+        self.lbl_ch_pwr.config(text=selected_ch)
 
     # ==========================================
     # CORE LOGIC & EVENT HANDLERS
@@ -424,7 +361,9 @@ class MainWindow:
             success, msg = self.devices.connect_hioki(ip, port)
             if success:
                 self.lbl_meter_status.config(text="● CONNECTED", fg=self.colors["status_on"])
-                self.devices.get_hioki().setup_measure_items()
+                # Lấy mảng kênh đã lưu thay vì Combobox
+                channels_to_measure = getattr(self, 'measured_channels', ["CH1"])
+                self.devices.get_hioki().setup_measure_items(channels_to_measure)
                 self.devices.get_hioki().start_integration()
                 self.start_routine()
             else:
@@ -467,13 +406,17 @@ class MainWindow:
             self.controller.disconnect()
             self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
 
-    def measurement_worker(self):
-        import random # Thêm thư viện random
-        sample_count = 0
-        total_power = 0.0
+    def measurement_worker(self):       
         
-        # Đọc tên bài đo từ Combobox để giả lập cho giống thật
+        sample_count = 0
         current_profile = getattr(self, 'current_profile_name', 'Unknown')
+        
+        # Lấy danh sách các kênh đang cần đo (mặc định CH1 nếu mảng trống)
+        measured_channels = getattr(self, 'measured_channels', ['CH1'])
+        
+        # Biến đệm riêng cho chế độ mô phỏng (Tính P_avg độc lập cho từng kênh)
+        sim_total_power = {ch: 0.0 for ch in measured_channels}
+        sim_tick_count = {ch: 0 for ch in measured_channels}
         
         while self.is_measuring:
             elapsed = time.time() - self.start_time
@@ -482,49 +425,81 @@ class MainWindow:
                 self.root.after(0, self.on_test_finished)
                 break
 
-            data = None
-            p_avg = 0.0
+            data_dict = {}
+            hours = elapsed / 3600.0
             
-            if not self.var_sim_mode.get() and self.controller:
-                if not self.controller.is_connected:
+            # ==================================================
+            # 1. ĐỌC DỮ LIỆU TỪ MÁY ĐO THẬT (QUA DEVICE MANAGER)
+            # ==================================================
+            if not self.var_sim_mode.get() and self.devices.is_hioki_connected():
+                hioki = self.devices.get_hioki()
+                if not hioki or not hioki.is_connected:
                     self.root.after(0, lambda: messagebox.showerror("Lỗi", "Mất kết nối với máy đo HIOKI!"))
                     self.is_measuring = False
                     break
-                data = self.controller.read_measurements()
-                if data:
-                    # HIOKI trả WP theo đơn vị Watthour (Wh).
-                    # P_avg (W) = WP (Wh) / Thời gian (Giờ)
-                    hours = elapsed / 3600.0
-                    if hours > 0:
-                        p_avg = data['WP'] / hours
-                    else:
-                        p_avg = data['P']
+                
+                # Trả về dict: {'CH1': {'U':.., 'I':.., 'P':.., 'WP':..}, 'CH2': {...}}
+                data_dict = hioki.read_measurements()
+                
+            # ==================================================
+            # 2. CHẾ ĐỘ GIẢ LẬP (TẠO DỮ LIỆU CHO TỪNG KÊNH)
+            # ==================================================
             else:
-                # --- GIẢ LẬP DỮ LIỆU THEO TẢI ETSI ---
-                volt = random.uniform(-48.2, -47.8) # Điện áp DC trạm viễn thông luôn quanh -48V
-                
-                if current_profile == "Full Load":
-                    curr = random.uniform(14.5, 15.5)
-                elif current_profile == "Busy Hour Load":
-                    curr = random.uniform(10.0, 11.0)
-                elif current_profile == "Medium Load":
-                    curr = random.uniform(7.0, 7.8)
-                else: # Low Load
-                    curr = random.uniform(2.0, 2.5)
+                for ch in measured_channels:
+                    volt = random.uniform(-48.2, -47.8) 
                     
-                data = {'U': abs(volt), 'I': curr, 'P': abs(volt * curr)}
+                    if ch == "CH1":
+                        # Giả lập BBU: Tiêu thụ điện ổn định, ít phụ thuộc vào tải
+                        curr = random.uniform(3.5, 4.0)
+                        
+                    elif ch == "CH2":
+                        # Giả lập RRU: Dao động mạnh theo kịch bản bài đo (Profile)
+                        if current_profile == "Full Load": curr = random.uniform(14.5, 15.5)
+                        elif current_profile == "Busy Hour Load": curr = random.uniform(10.0, 11.0)
+                        elif current_profile == "Medium Load": curr = random.uniform(7.0, 7.8)
+                        else: curr = random.uniform(2.0, 2.5)
+                        
+                    else:
+                        # Kênh dự phòng (CH3) nếu có
+                        curr = random.uniform(1.0, 1.5)
+                    
+                    # Thêm chút nhiễu ngẫu nhiên hệ thống cho tự nhiên
+                    curr += random.uniform(-0.1, 0.1) 
+                    
+                    p = abs(volt * curr)
+                    sim_tick_count[ch] += 1
+                    sim_total_power[ch] += p
+                    
+                    data_dict[ch] = {'U': abs(volt), 'I': curr, 'P': p}
 
-            if data:
-                sample_count += 1
-                u, i, p = data['U'], data['I'], data['P']
+            # ==================================================
+            # 3. XỬ LÝ VÀ ĐẨY DỮ LIỆU LÊN GIAO DIỆN
+            # ==================================================
+            if data_dict:
+                viewed_ch = self.cb_channel.get() # Kiểm tra xem User đang chọn xem kênh nào
                 
-                total_power += p
-                p_avg = total_power / sample_count
-                eval_status = "PASS" if p <= self.max_power else "FAIL"
-                
-                record = (sample_count, datetime.now().strftime("%H:%M:%S"), int(elapsed), 
-                          f"{u:.2f}", f"{i:.2f}", f"{p:.2f}", f"{p_avg:.2f}", eval_status)
-                self.root.after(0, self.update_dashboard, record)
+                for ch_name, vals in data_dict.items():
+                    sample_count += 1
+                    u, i, p = vals.get('U', 0), vals.get('I', 0), vals.get('P', 0)
+                    
+                    # Tính Công suất trung bình (P_Avg)
+                    if not self.var_sim_mode.get():
+                        wp = vals.get('WP', 0)
+                        p_avg = (wp / hours) if hours > 0 else p
+                    else:
+                        p_avg = sim_total_power[ch_name] / sim_tick_count[ch_name]
+
+                    eval_status = "PASS" if p <= self.max_power else "FAIL"
+                    
+                    # Gói thành Record 9 phần tử (Có ch_name ở index 3)
+                    record = (sample_count, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), int(elapsed), 
+                              ch_name, f"{u:.2f}", f"{i:.2f}", f"{p:.2f}", f"{p_avg:.2f}", eval_status)
+                    
+                    # So sánh kênh của gói dữ liệu này với kênh Combobox đang hiển thị
+                    is_viewed = (ch_name == viewed_ch)
+                    
+                    # Bắn qua UI (Main Thread)
+                    self.root.after(0, self.update_dashboard, record, is_viewed)
 
             time.sleep(self.sample_rate)
 
@@ -550,23 +525,27 @@ class MainWindow:
         self.current_batch_index += 1
         self.run_next_batch_test()    
 
-    def update_dashboard(self, record):
+    def update_dashboard(self, record, is_viewed=True):
         """Cập nhật dữ liệu hiển thị (Chạy trên Main Thread)"""
-        stt, sys_time, elapsed, u, i, p, p_avg, status = record
+        # Giải nén 9 phần tử (Đã thêm biến 'channel' vào vị trí số 4)
+        stt, sys_time, elapsed, channel, u, i, p, p_avg, status = record
         
-        # Update LED đỏ
-        self.lbl_volt.config(text=f"{float(u):05.2f}")
-        self.lbl_curr.config(text=f"{float(i):05.2f}")
-        self.lbl_pwr.config(text=f"{float(p):06.2f}")
-        self.lbl_avg.config(text=f"{float(p_avg):06.2f}")
-        
-        # Update Evaluation
-        color = "#22C55E" if status == "PASS" else "#EF4444"
-        self.lbl_eval.config(text=f"EVALUATION: {status}", fg=color)
-        
-        # Update Data table
+        # 1. LUÔN LUÔN LƯU DỮ LIỆU: Cập nhật vào Data table và Memory
+        # (Chèn vào vị trí 0 để dữ liệu mới nhất luôn hiển thị trên cùng)
         self.tree.insert("", 0, values=record)
         self.data_logs.append(record)
+        
+        # 2. CHỈ HIỂN THỊ LÊN LED NẾU ĐÚNG KÊNH ĐANG ĐƯỢC TICK CHỌN TRÊN COMBOBOX
+        if is_viewed:
+            # Update LED đỏ
+            self.lbl_volt.config(text=f"{float(u):05.2f}")
+            self.lbl_curr.config(text=f"{float(i):05.2f}")
+            self.lbl_pwr.config(text=f"{float(p):06.2f}")
+            self.lbl_avg.config(text=f"{float(p_avg):06.2f}")
+            
+            # Update Evaluation
+            color = "#22C55E" if status == "PASS" else "#EF4444"
+            self.lbl_eval.config(text=f"EVALUATION: {status}", fg=color)
 
     def on_closing(self):
         """Hàm dọn dẹp khi đóng cửa sổ phần mềm"""
@@ -591,7 +570,7 @@ class MainWindow:
         left_panel.pack(side="left", fill="y", padx=10, pady=5)
         
         # Gán nhãn kênh vào một biến để có thể return
-        lbl_channel = tk.Label(left_panel, text=channel, font=("Arial", 11, "bold"), fg="white", bg="#333333", relief="raised", bd=2, width=4)
+        lbl_channel = tk.Label(left_panel, text=channel, font=("Arial", 11, "bold"), fg="white", bg="#333333", relief="raised", bd=2, width=5)
         lbl_channel.pack(side="left", padx=(0, 10))
         
         tk.Label(left_panel, text=mode, font=("Arial", 9, "bold"), fg=self.colors["led_red"], bg=self.colors["led_bg"]).pack(side="left", padx=5)
@@ -604,7 +583,202 @@ class MainWindow:
         # TRẢ VỀ CẢ 2 NHÃN BẰNG TUPLE
         return lbl_channel, lbl_value
     
+    # def export_html_report(self):
+    #     from tkinter import filedialog, messagebox
+    #     from datetime import datetime
+        
+    #     if not hasattr(self, 'data_logs') or not self.data_logs:
+    #         messagebox.showwarning("Trống", "Không có dữ liệu để xuất báo cáo!")
+    #         return
+
+    #     file_path = filedialog.asksaveasfilename(
+    #         defaultextension=".html",
+    #         filetypes=[("HTML files", "*.html")],
+    #         title="Lưu báo cáo HTML"
+    #     )
+        
+    #     if not file_path:
+    #         return
+
+    #     logs = self.data_logs
+        
+    #     # 1. BÓC TÁCH DỮ LIỆU THEO TỪNG KÊNH
+    #     channels_data = {}
+    #     for row in logs:
+    #         # row format: (stt, sys_time, elapsed, channel, u, i, p, p_avg, status)
+    #         elapsed = int(row[2])
+    #         ch = row[3]
+    #         u = float(row[4])
+    #         i = float(row[5])
+    #         p = float(row[6])
+            
+    #         if ch not in channels_data:
+    #             channels_data[ch] = {'elapsed': [], 'p': [], 'logs': []}
+                
+    #         channels_data[ch]['elapsed'].append(elapsed)
+    #         channels_data[ch]['p'].append(p)
+    #         channels_data[ch]['logs'].append(row)
+
+    #     # 2. XÂY DỰNG KHỐI HTML SUMMARY CHO TỪNG KÊNH
+    #     summary_html_blocks = ""
+    #     for ch, cdata in channels_data.items():
+    #         p_list = cdata['p']
+    #         max_p = max(p_list) if p_list else 0
+    #         min_p = min(p_list) if p_list else 0
+    #         avg_p = sum(p_list) / len(p_list) if p_list else 0
+            
+    #         summary_html_blocks += f"""
+    #         <div class="summary-card">
+    #             <h3>Thống kê Kênh {ch}</h3>
+    #             <p>Max Power: <span class="highlight">{max_p:.2f} W</span></p>
+    #             <p>Min Power: <span class="highlight">{min_p:.2f} W</span></p>
+    #             <p>Avg Power: <span class="highlight">{avg_p:.2f} W</span></p>
+    #             <p>Số mẫu đo: <span class="highlight">{len(p_list)}</span></p>
+    #         </div>
+    #         """
+
+    #     # 3. CHUẨN BỊ DATASET CHO CHART.JS (MỖI KÊNH 1 ĐƯỜNG ĐỒ THỊ)
+    #     datasets_js = []
+    #     colors = ["#EF4444", "#3B82F6", "#10B981", "#F59E0B"] # Bảng màu cho các đường (Đỏ, Xanh dương, Xanh lá, Vàng)
+        
+    #     for idx, (ch, cdata) in enumerate(channels_data.items()):
+    #         color = colors[idx % len(colors)]
+    #         datasets_js.append(f"""
+    #             {{
+    #                 label: 'Công suất {ch} (W)',
+    #                 data: {cdata['p']},
+    #                 borderColor: '{color}',
+    #                 backgroundColor: '{color}22',
+    #                 borderWidth: 2,
+    #                 fill: true,
+    #                 tension: 0.2,
+    #                 pointRadius: 0,
+    #                 pointHoverRadius: 4
+    #             }}
+    #         """)
+            
+    #     chart_datasets_string = ",\n".join(datasets_js)
+    #     # Lấy trục thời gian (Elapsed) của kênh đầu tiên làm mốc chuẩn cho toàn bộ biểu đồ
+    #     chart_labels_string = str(channels_data[list(channels_data.keys())[0]]['elapsed'])
+
+    #     # 4. TẠO CÁC DÒNG CHO BẢNG DỮ LIỆU CHI TIẾT
+    #     table_rows = ""
+    #     for row in logs:
+    #         # Gán class màu sắc dựa trên kết quả EVAL (PASS/FAIL)
+    #         tr_class = "status-pass" if row[8] == "PASS" else "status-fail"
+    #         table_rows += f"""
+    #         <tr class="{tr_class}">
+    #             <td>{row[0]}</td>
+    #             <td>{row[1]}</td>
+    #             <td>{row[2]}</td>
+    #             <td><b>{row[3]}</b></td>
+    #             <td>{row[4]}</td>
+    #             <td>{row[5]}</td>
+    #             <td>{row[6]}</td>
+    #             <td>{row[7]}</td>
+    #             <td>{row[8]}</td>
+    #         </tr>
+    #         """
+
+    #     # 5. RÁP THÀNH MÃ HTML HOÀN CHỈNH
+    #     html_content = f"""
+    #     <!DOCTYPE html>
+    #     <html lang="en">
+    #     <head>
+    #         <meta charset="UTF-8">
+    #         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    #         <title>Power Consumption Report</title>
+    #         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    #         <style>
+    #             body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #F3F4F6; margin: 0; padding: 20px; color: #1F2937; }}
+    #             .container {{ max-width: 1200px; margin: auto; background: #FFFFFF; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+    #             h1 {{ text-align: center; color: #111827; border-bottom: 2px solid #E5E7EB; padding-bottom: 10px; }}
+                
+    #             .summary-container {{ display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; justify-content: center; }}
+    #             .summary-card {{ flex: 1; min-width: 200px; background: #F8FAFC; padding: 20px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center; }}
+    #             .summary-card h3 {{ margin-top: 0; color: #3B82F6; }}
+    #             .summary-card p {{ margin: 10px 0; font-size: 14px; font-weight: 500; }}
+    #             .highlight {{ font-size: 18px; font-weight: bold; color: #0F172A; }}
+                
+    #             .chart-container {{ width: 100%; height: 400px; margin: 30px 0; }}
+                
+    #             table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }}
+    #             th, td {{ border: 1px solid #E5E7EB; padding: 10px; text-align: center; }}
+    #             th {{ background-color: #F9FAFB; color: #374151; font-weight: bold; }}
+    #             .status-pass td {{ background-color: #DCFCE7; color: #166534; }}
+    #             .status-fail td {{ background-color: #FEE2E2; color: #991B1B; }}
+    #         </style>
+    #     </head>
+    #     <body>
+    #         <div class="container">
+    #             <h1>BÁO CÁO TIÊU THỤ ĐIỆN NĂNG (MULTI-CHANNEL)</h1>
+    #             <p style="text-align: center; color: #6B7280;">Ngày xuất báo cáo: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}</p>
+                
+    #             <div class="summary-container">
+    #                 {summary_html_blocks}
+    #             </div>
+
+    #             <div class="chart-container">
+    #                 <canvas id="powerChart"></canvas>
+    #             </div>
+
+    #             <h3>Dữ liệu chi tiết</h3>
+    #             <table>
+    #                 <thead>
+    #                     <tr>
+    #                         <th>STT</th>
+    #                         <th>Thời gian</th>
+    #                         <th>Elapsed (s)</th>
+    #                         <th>Kênh (CH)</th>
+    #                         <th>Điện áp (V)</th>
+    #                         <th>Dòng điện (A)</th>
+    #                         <th>Công suất (W)</th>
+    #                         <th>P. Trung bình (W)</th>
+    #                         <th>Trạng thái</th>
+    #                     </tr>
+    #                 </thead>
+    #                 <tbody>
+    #                     {table_rows}
+    #                 </tbody>
+    #             </table>
+    #         </div>
+
+    #         <script>
+    #             const ctx = document.getElementById('powerChart').getContext('2d');
+    #             new Chart(ctx, {{
+    #                 type: 'line',
+    #                 data: {{
+    #                     labels: {chart_labels_string},
+    #                     datasets: [
+    #                         {chart_datasets_string}
+    #                     ]
+    #                 }},
+    #                 options: {{
+    #                     responsive: true,
+    #                     maintainAspectRatio: false,
+    #                     interaction: {{ mode: 'index', intersect: false }},
+    #                     scales: {{
+    #                         x: {{ title: {{ display: true, text: 'Thời gian đo (s)', font: {{weight: 'bold'}} }} }},
+    #                         y: {{ title: {{ display: true, text: 'Công suất tiêu thụ (W)', font: {{weight: 'bold'}} }} }}
+    #                     }}
+    #                 }}
+    #             }});
+    #         </script>
+    #     </body>
+    #     </html>
+    #     """
+
+    #     try:
+    #         with open(file_path, "w", encoding="utf-8") as f:
+    #             f.write(html_content)
+    #         messagebox.showinfo("Thành công", f"Đã xuất báo cáo thành công tại:\n{file_path}")
+    #     except Exception as e:
+    #         messagebox.showerror("Lỗi file", f"Không thể lưu file báo cáo:\n{e}")
+
     def export_html_report(self):
+        from tkinter import filedialog, messagebox
+        from datetime import datetime
+        
         # Kiểm tra xem có dữ liệu trong kho tổng hoặc data_logs đang hiển thị không
         if not hasattr(self, 'all_batch_results') or not self.all_batch_results:
             if not self.data_logs:
@@ -613,7 +787,7 @@ class MainWindow:
             else:
                 # Nếu chạy lẻ tẻ (chưa có trong all_batch_results) thì tự động bọc lại
                 self.all_batch_results = [{
-                    "test_name": self.cb_profile.get(),
+                    "test_name": getattr(self, 'current_profile_name', 'Manual Test'),
                     "max_power": float(self.ent_max_pwr.get()),
                     "logs": list(self.data_logs)
                 }]
@@ -631,56 +805,71 @@ class MainWindow:
         detailed_data = []
         overall_pass = True
 
-        # QUÉT QUA TỪNG BÀI ĐO TRONG BATCH ĐỂ LÀM BÁO CÁO
+        # QUÉT QUA TỪNG BÀI ĐO TRONG BATCH
         for result in self.all_batch_results:
             t_name = result["test_name"]
             m_power = result["max_power"]
-            logs = result["logs"]
+            raw_logs = result["logs"]
             
-            total = len(logs)
-            if total == 0: continue
+            if len(raw_logs) == 0: continue
             
-            pass_count = sum(1 for row in logs if row[7] == "PASS")
-            fail_count = total - pass_count
-            
-            if fail_count > 0:
-                overall_pass = False
-            
-            final_p_avg = logs[-1][6]
+            # 1. BÓC TÁCH DỮ LIỆU THEO TỪNG CHANNEL
+            logs_by_channel = {}
+            for row in raw_logs:
+                ch = row[3]  # Lấy Channel ở vị trí index 3
+                if ch not in logs_by_channel:
+                    logs_by_channel[ch] = []
+                logs_by_channel[ch].append(row)
 
-            # Dữ liệu cho Bảng tóm tắt (Summary)
-            summary_data.append({
-                "test_name": t_name,
-                "total": total,
-                "pass_count": pass_count,
-                "fail_count": fail_count,
-                "max_power": m_power,
-                "final_p_avg": final_p_avg,
-                "verdict": "PASS" if fail_count == 0 else "FAIL"
-            })
-            
-            # Dữ liệu cho Bảng chi tiết & Biểu đồ Chart.js
-            chart_labels = [row[2] for row in logs]
-            chart_data = [float(row[5]) for row in logs]
-            chart_limit = [m_power] * total
+            # 2. XỬ LÝ TỪNG CHANNEL THÀNH MỘT MỤC BÁO CÁO RIÊNG BIỆT
+            for ch, logs in logs_by_channel.items():
+                # Tạo tên bài đo ghép với tên kênh (VD: "Full Load - CH1")
+                t_name_ch = f"{t_name} ({ch})"
+                
+                total = len(logs)
+                
+                # Đếm Pass/Fail (Trạng thái giờ nằm ở ô số 8)
+                pass_count = sum(1 for row in logs if row[8] == "PASS")
+                fail_count = total - pass_count
+                
+                if fail_count > 0:
+                    overall_pass = False
+                
+                # P_avg cuối cùng nằm ở ô số 7
+                final_p_avg = logs[-1][7]
 
-            # U, I
-            chart_volt = [float(row[3]) for row in logs]  
-            chart_curr = [float(row[4]) for row in logs]  
-            
-            detailed_data.append({
-                "test_name": t_name,
-                "total": total,
-                "fail_count": fail_count,
-                "chart_labels": chart_labels,
-                "chart_data": chart_data,
-                "chart_limit": chart_limit,
-                "chart_volt": chart_volt,   # Voltage
-                "chart_curr": chart_curr,   # Current
-                "table_data": logs
-            })
+                # Dữ liệu cho Bảng tóm tắt (Summary)
+                summary_data.append({
+                    "test_name": t_name_ch,
+                    "total": total,
+                    "pass_count": pass_count,
+                    "fail_count": fail_count,
+                    "max_power": m_power,
+                    "final_p_avg": final_p_avg,
+                    "verdict": "PASS" if fail_count == 0 else "FAIL"
+                })
+                
+                # Dữ liệu cho Bảng chi tiết & Biểu đồ Chart.js (Đã cập nhật Index)
+                chart_labels = [row[2] for row in logs]
+                chart_data = [float(row[6]) for row in logs]  # Power (index 6)
+                chart_limit = [m_power] * total
 
-        # Dữ liệu Header của Report
+                chart_volt = [float(row[4]) for row in logs]  # Voltage (index 4)
+                chart_curr = [float(row[5]) for row in logs]  # Current (index 5)
+                
+                detailed_data.append({
+                    "test_name": t_name_ch,
+                    "total": total,
+                    "fail_count": fail_count,
+                    "chart_labels": chart_labels,
+                    "chart_data": chart_data,
+                    "chart_limit": chart_limit,
+                    "chart_volt": chart_volt,   
+                    "chart_curr": chart_curr,   
+                    "table_data": logs
+                })
+
+        # Dữ liệu Header của Report (Lấy sys_time ở index 1)
         first_log = self.all_batch_results[0]["logs"]
         last_log = self.all_batch_results[-1]["logs"]
         
@@ -693,17 +882,26 @@ class MainWindow:
             "Overall Result": "PASS" if overall_pass else "FAIL"
         }
 
-        # Gọi file HTMLExporter
+        # Gọi file HTMLExporter của bạn
         from utils.html_exporter import HTMLExporter
         exporter = HTMLExporter()
         exporter.export_report(file_path, general_info, summary_data, detailed_data)
         
-        messagebox.showinfo("Thành công", f"Đã xuất báo cáo Batch HTML ({len(self.all_batch_results)} bài đo) thành công:\n{file_path}")
+        messagebox.showinfo("Thành công", f"Đã xuất báo cáo Batch HTML thành công:\n{file_path}")
 
     # def export_html_report(self):
-    #     if not self.data_logs:
-    #         messagebox.showwarning("Cảnh báo", "Không có dữ liệu để xuất báo cáo!")
-    #         return
+    #     # Kiểm tra xem có dữ liệu trong kho tổng hoặc data_logs đang hiển thị không
+    #     if not hasattr(self, 'all_batch_results') or not self.all_batch_results:
+    #         if not self.data_logs:
+    #             messagebox.showwarning("Cảnh báo", "Không có dữ liệu để xuất báo cáo!")
+    #             return
+    #         else:
+    #             # Nếu chạy lẻ tẻ (chưa có trong all_batch_results) thì tự động bọc lại
+    #             self.all_batch_results = [{
+    #                 "test_name": self.cb_profile.get(),
+    #                 "max_power": float(self.ent_max_pwr.get()),
+    #                 "logs": list(self.data_logs)
+    #             }]
 
     #     file_path = filedialog.asksaveasfilename(
     #         defaultextension=".html", 
@@ -714,56 +912,77 @@ class MainWindow:
     #     if not file_path:
     #         return
 
-    #     # 1. Chuẩn bị Dữ liệu Thông tin chung
-    #     overall_pass = all(row[7] == "PASS" for row in self.data_logs)
-    #     general_info = {
-    #         "Serial Number": self.ent_serial.get(),
-    #         "Product Type": "RRU gNodeB",
-    #         "Test Standard": "ETSI ES 202 706-1",
-    #         "Start Time": self.data_logs[0][1] if self.data_logs else "N/A",
-    #         "End Time": self.data_logs[-1][1] if self.data_logs else "N/A",
-    #         "Overall Result": "PASS" if overall_pass else "FAIL"
-    #     }
+    #     summary_data = []
+    #     detailed_data = []
+    #     overall_pass = True
 
-    #     # 2. Chuẩn bị Dữ liệu Tóm tắt
-    #     test_name = self.cb_profile.get()
-    #     max_limit = float(self.ent_max_pwr.get())
-    #     total = len(self.data_logs)
-    #     pass_count = sum(1 for row in self.data_logs if row[7] == "PASS")
-    #     fail_count = total - pass_count
+    #     # QUÉT QUA TỪNG BÀI ĐO TRONG BATCH ĐỂ LÀM BÁO CÁO
+    #     for result in self.all_batch_results:
+    #         t_name = result["test_name"]
+    #         m_power = result["max_power"]
+    #         logs = result["logs"]
+            
+    #         total = len(logs)
+    #         if total == 0: continue
+            
+    #         pass_count = sum(1 for row in logs if row[7] == "PASS")
+    #         fail_count = total - pass_count
+            
+    #         if fail_count > 0:
+    #             overall_pass = False
+            
+    #         final_p_avg = logs[-1][6]
 
-    #     summary_data = [
-    #         {
-    #             "test_name": test_name,
+    #         # Dữ liệu cho Bảng tóm tắt (Summary)
+    #         summary_data.append({
+    #             "test_name": t_name,
     #             "total": total,
     #             "pass_count": pass_count,
     #             "fail_count": fail_count,
-    #             "max_power": max_limit,
-    #             # công suất trung bình lấy giá trị cuối của bảng dữ liệu
-    #             "average_power": self.data_logs[-1][6] if self.data_logs else 0,
+    #             "max_power": m_power,
+    #             "final_p_avg": final_p_avg,
     #             "verdict": "PASS" if fail_count == 0 else "FAIL"
-    #         }
-    #     ]
+    #         })
+            
+    #         # Dữ liệu cho Bảng chi tiết & Biểu đồ Chart.js
+    #         chart_labels = [row[2] for row in logs]
+    #         chart_data = [float(row[5]) for row in logs]
+    #         chart_limit = [m_power] * total
 
-    #     # 3. Chuẩn bị Dữ liệu Chi tiết & Biểu đồ
-    #     chart_labels = [row[2] for row in self.data_logs] # Trục X: Thời gian đo (s)
-    #     chart_data = [float(row[5]) for row in self.data_logs] # Trục Y: Công suất P
-    #     chart_limit = [max_limit] * total # Đường kẻ ngang đỏ giới hạn
-
-    #     detailed_data = [
-    #         {
-    #             "test_name": test_name,
+    #         # U, I
+    #         chart_volt = [float(row[3]) for row in logs]  
+    #         chart_curr = [float(row[4]) for row in logs]  
+            
+    #         detailed_data.append({
+    #             "test_name": t_name,
     #             "total": total,
     #             "fail_count": fail_count,
     #             "chart_labels": chart_labels,
     #             "chart_data": chart_data,
     #             "chart_limit": chart_limit,
-    #             "table_data": self.data_logs
-    #         }
-    #     ]
+    #             "chart_volt": chart_volt,   # Voltage
+    #             "chart_curr": chart_curr,   # Current
+    #             "table_data": logs
+    #         })
 
-    #     # 4. Xuất file
+    #     # Dữ liệu Header của Report
+    #     first_log = self.all_batch_results[0]["logs"]
+    #     last_log = self.all_batch_results[-1]["logs"]
+        
+    #     general_info = {
+    #         "Serial Number": self.ent_serial.get(),
+    #         "Product Type": "RRU gNodeB",
+    #         "Test Standard": "ETSI ES 202 706-1",
+    #         "Start Time": first_log[0][1] if first_log else "N/A",
+    #         "End Time": last_log[-1][1] if last_log else "N/A",
+    #         "Overall Result": "PASS" if overall_pass else "FAIL"
+    #     }
+
+    #     # Gọi file HTMLExporter
+    #     from utils.html_exporter import HTMLExporter
     #     exporter = HTMLExporter()
     #     exporter.export_report(file_path, general_info, summary_data, detailed_data)
         
-    #     messagebox.showinfo("Thành công", f"Đã xuất báo cáo HTML thành công:\n{file_path}")
+    #     messagebox.showinfo("Thành công", f"Đã xuất báo cáo Batch HTML ({len(self.all_batch_results)} bài đo) thành công:\n{file_path}")
+
+   
