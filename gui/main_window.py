@@ -1,4 +1,6 @@
 # File: gui/main_window.py
+import os
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
@@ -18,7 +20,7 @@ class MainWindow:
     def __init__(self, root):
         self.root = root
         self.devices = DeviceManager()
-        self.root.title("ETSI ES 202 706-1 | RRU Power Measurement")
+        self.root.title(f"VHT - BS Power Consumption Measurement Tool (ETSI ES 202 706-1) \tver.{self.get_version_info()}")
         self.root.geometry("1100x850")
         
         # Biến trạng thái hệ thống
@@ -889,100 +891,24 @@ class MainWindow:
         
         messagebox.showinfo("Thành công", f"Đã xuất báo cáo Batch HTML thành công:\n{file_path}")
 
-    # def export_html_report(self):
-    #     # Kiểm tra xem có dữ liệu trong kho tổng hoặc data_logs đang hiển thị không
-    #     if not hasattr(self, 'all_batch_results') or not self.all_batch_results:
-    #         if not self.data_logs:
-    #             messagebox.showwarning("Cảnh báo", "Không có dữ liệu để xuất báo cáo!")
-    #             return
-    #         else:
-    #             # Nếu chạy lẻ tẻ (chưa có trong all_batch_results) thì tự động bọc lại
-    #             self.all_batch_results = [{
-    #                 "test_name": self.cb_profile.get(),
-    #                 "max_power": float(self.ent_max_pwr.get()),
-    #                 "logs": list(self.data_logs)
-    #             }]
 
-    #     file_path = filedialog.asksaveasfilename(
-    #         defaultextension=".html", 
-    #         filetypes=[("HTML Report", "*.html")],
-    #         initialfile=f"{self.ent_serial.get()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-    #     )
+    def get_version_info(self):
+        # 1. TỰ ĐỘNG ĐỌC VERSION TỪ FILE VERSION.TXT
+        version = "0.0.0"
+        try:
+            # PyInstaller khi chạy exe sẽ giải nén vào thư mục tạm có tên trong sys._MEIPASS
+            if hasattr(sys, '_MEIPASS'):
+                base_path = sys._MEIPASS
+            else:
+                base_path = os.path.abspath(".")
+                
+            version_path = os.path.join(base_path, 'version.txt')
+            
+            if os.path.exists(version_path):
+                with open(version_path, 'r') as f:
+                    version = f.read().strip()
+        except Exception as e:
+            print(f"Không thể đọc version: {e}")
         
-    #     if not file_path:
-    #         return
-
-    #     summary_data = []
-    #     detailed_data = []
-    #     overall_pass = True
-
-    #     # QUÉT QUA TỪNG BÀI ĐO TRONG BATCH ĐỂ LÀM BÁO CÁO
-    #     for result in self.all_batch_results:
-    #         t_name = result["test_name"]
-    #         m_power = result["max_power"]
-    #         logs = result["logs"]
+        return version
             
-    #         total = len(logs)
-    #         if total == 0: continue
-            
-    #         pass_count = sum(1 for row in logs if row[7] == "PASS")
-    #         fail_count = total - pass_count
-            
-    #         if fail_count > 0:
-    #             overall_pass = False
-            
-    #         final_p_avg = logs[-1][6]
-
-    #         # Dữ liệu cho Bảng tóm tắt (Summary)
-    #         summary_data.append({
-    #             "test_name": t_name,
-    #             "total": total,
-    #             "pass_count": pass_count,
-    #             "fail_count": fail_count,
-    #             "max_power": m_power,
-    #             "final_p_avg": final_p_avg,
-    #             "verdict": "PASS" if fail_count == 0 else "FAIL"
-    #         })
-            
-    #         # Dữ liệu cho Bảng chi tiết & Biểu đồ Chart.js
-    #         chart_labels = [row[2] for row in logs]
-    #         chart_data = [float(row[5]) for row in logs]
-    #         chart_limit = [m_power] * total
-
-    #         # U, I
-    #         chart_volt = [float(row[3]) for row in logs]  
-    #         chart_curr = [float(row[4]) for row in logs]  
-            
-    #         detailed_data.append({
-    #             "test_name": t_name,
-    #             "total": total,
-    #             "fail_count": fail_count,
-    #             "chart_labels": chart_labels,
-    #             "chart_data": chart_data,
-    #             "chart_limit": chart_limit,
-    #             "chart_volt": chart_volt,   # Voltage
-    #             "chart_curr": chart_curr,   # Current
-    #             "table_data": logs
-    #         })
-
-    #     # Dữ liệu Header của Report
-    #     first_log = self.all_batch_results[0]["logs"]
-    #     last_log = self.all_batch_results[-1]["logs"]
-        
-    #     general_info = {
-    #         "Serial Number": self.ent_serial.get(),
-    #         "Product Type": "RRU gNodeB",
-    #         "Test Standard": "ETSI ES 202 706-1",
-    #         "Start Time": first_log[0][1] if first_log else "N/A",
-    #         "End Time": last_log[-1][1] if last_log else "N/A",
-    #         "Overall Result": "PASS" if overall_pass else "FAIL"
-    #     }
-
-    #     # Gọi file HTMLExporter
-    #     from utils.html_exporter import HTMLExporter
-    #     exporter = HTMLExporter()
-    #     exporter.export_report(file_path, general_info, summary_data, detailed_data)
-        
-    #     messagebox.showinfo("Thành công", f"Đã xuất báo cáo Batch HTML ({len(self.all_batch_results)} bài đo) thành công:\n{file_path}")
-
-   

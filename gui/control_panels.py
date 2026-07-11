@@ -4,9 +4,6 @@ import os
 from tkinter import ttk, messagebox, filedialog
 from core.device_manager import DeviceManager
 
-# Nếu bạn để file này ở gui/control_panels.py, hãy import controller vào:
-# from core.hioki_controller import HiokiPW3336Controller
-
 class RemoteConsoleWindow:
     def __init__(self, parent_root, current_ip="10.6.6.94", current_port="3300", callback_on_close=None):
         self.window = tk.Toplevel(parent_root)
@@ -14,7 +11,8 @@ class RemoteConsoleWindow:
         self.window.geometry("600x550")
         self.window.configure(bg="#F4F6F9")
         
-        # Khóa tương tác với cửa sổ chính khi Popup này đang mở (Modal window)
+        # Khóa tương tác với cửa sổ chính khi Popup này đang 
+        # mở (Modal window)
         self.window.grab_set() 
         
         self.controller = None
@@ -91,21 +89,6 @@ class RemoteConsoleWindow:
         tk.Checkbutton(inner_ch, text="CH2", variable=self.var_ch2, bg="#FFFFFF", font=("Arial", 9, "bold")).pack(side="left", padx=15)
         tk.Checkbutton(inner_ch, text="CH3", variable=self.var_ch3, bg="#FFFFFF", font=("Arial", 9, "bold")).pack(side="left", padx=15)
 
-        # # ==========================================
-        # # 2. MEASUREMENT CHANNEL SELECTION
-        # # ==========================================
-        # ch_frame = ttk.LabelFrame(self.window, text="Measurement Channel", style="Console.TLabelframe")
-        # ch_frame.pack(fill="both", expand=True, padx=15, pady=5)
-        
-        # inner_ch = tk.Frame(ch_frame, bg="#FFFFFF")
-        # inner_ch.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # # Row 1: Channel selection
-        # tk.Label(inner_ch, text="Meas. Channel:", bg="#FFFFFF").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        # self.cb_channel = ttk.Combobox(inner_ch, values=["CH1", "CH2", "CH3", "SUM"], width=10, state="readonly")
-        # self.cb_channel.set("CH1")
-        # self.cb_channel.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-
         # ==========================================
         # 3. KHUNG CMD SCPI
         # ==========================================
@@ -169,37 +152,6 @@ class RemoteConsoleWindow:
             self.append_response("Disconnected.")
 
 
-
-        # if not self.is_connected:
-        #     ip = self.ent_ip.get()
-        #     port = int(self.ent_port.get())
-            
-        #     # Khởi tạo class điều khiển (Nếu chưa import file thì dùng socket trực tiếp tạm thời)
-        #     try:
-        #         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #         self.sock.settimeout(2.0)
-        #         self.sock.connect((ip, port))
-                
-        #         self.is_connected = True
-        #         self.lbl_status.config(text="● CONNECTED", fg="#22C55E")
-        #         self.btn_connect.config(text="Disconnect", bg="#EF4444")
-        #         self.btn_send.config(state="normal")
-                
-        #         self.append_response("[System] Connection established.\n")
-        #     except Exception as e:
-        #         messagebox.showerror("Connection Error", f"Cannot connect to {ip}:{port}\nError: {e}")
-        # else:
-        #     # Thực hiện ngắt kết nối
-        #     try:
-        #         self.sock.close()
-        #     except:
-        #         pass
-        #     self.is_connected = False
-        #     self.lbl_status.config(text="● DISCONNECTED", fg="#EF4444")
-        #     self.btn_connect.config(text="Connect", bg="#2563EB")
-        #     self.btn_send.config(state="disabled")
-        #     self.append_response("[System] Connection closed.\n")
-
     def send_command(self, event=None):
         hioki = self.devices.get_hioki()
         if not hioki or not hioki.is_connected:
@@ -218,30 +170,6 @@ class RemoteConsoleWindow:
             self.append_response(f"< {hioki.query(cmd)}\n")
         else:
             hioki.send_command(cmd)
-        # if not self.is_connected:
-        #     return
-            
-        # raw_cmd = self.ent_cmd.get().strip()
-        # if not raw_cmd:
-        #     return
-            
-        # # Thêm ký tự ngắt dòng CRLF chuẩn của HIOKI SCPI
-        # cmd_to_send = raw_cmd + "\r\n"
-        
-        # try:
-        #     self.sock.sendall(cmd_to_send.encode('ascii'))
-        #     self.append_response(f"> {raw_cmd}\n")
-            
-        #     # Nếu lệnh chứa dấu hỏi (?), đây là lệnh truy vấn cần chờ đọc phản hồi
-        #     if "?" in raw_cmd:
-        #         response = self.sock.recv(4096).decode('ascii').strip()
-        #         self.append_response(f"< {response}\n")
-                
-        # except socket.timeout:
-        #     self.append_response("< [Error] Timeout waiting for response.\n")
-        # except Exception as e:
-        #     self.append_response(f"< [Error] Communication failed: {e}\n")
-        #     self.toggle_connection() # Ngắt kết nối nếu lỗi mạng
 
     def append_response(self, text, clear_first=True):
         # Chèn nội dung mới (thêm \n để mỗi log nằm trên 1 dòng)
@@ -267,13 +195,6 @@ class RemoteConsoleWindow:
             "controller": getattr(self, 'controller', None),
             "is_connected": self.is_connected
         }
-
-        # # 2. Đóng socket thử nghiệm (nếu có)
-        # if self.is_connected:
-        #     try:
-        #         self.sock.close()
-        #     except:
-        #         pass
                 
         cb = self.callback_on_close
         self.window.grab_release()
