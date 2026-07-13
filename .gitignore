@@ -19,6 +19,7 @@ v/
 # 3. KẾT QUẢ ĐO KIỂM & LOG (Project Specific)
 # Bỏ qua các file sinh ra trong quá trình chạy app
 # ==========================================
+logs/
 data/reports/*.csv
 data/reports/*.xlsx
 data/reports/*.html

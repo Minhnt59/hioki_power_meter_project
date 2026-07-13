@@ -25,6 +25,7 @@ class RemoteConsoleWindow:
         
         self.setup_styles()
         self.build_ui()
+        self.update_connection_ui()
 
     def setup_styles(self):
         style = ttk.Style()
@@ -127,6 +128,18 @@ class RemoteConsoleWindow:
         btn_close = tk.Button(bottom_frame, text="Apply Config & Close", font=("Arial", 10, "bold"), bg="#6B7280", fg="white", relief="flat", height=2, command=self.on_close_clicked)
         btn_close.pack(fill="x")
 
+    def update_connection_ui(self):
+        """Hàm này chịu trách nhiệm cập nhật chữ và màu sắc dựa theo biến trạng thái thật"""
+        if self.devices.is_hioki_connected():
+            self.btn_connect.config(text="Disconnect", bg="#EF4444")
+            self.lbl_status.config(text="● CONNECTED", fg="#22C55E")
+            self.btn_send.config(state="normal")
+        else:
+            self.btn_connect.config(text="Connect", bg="#10B981")
+            self.lbl_status.config(text="● DISCONNECTED", fg="#EF4444")
+            self.btn_send.config(state="disabled")
+
+
     # ==========================================
     # CÁC HÀM XỬ LÝ LOGIC
     # ==========================================
@@ -142,6 +155,7 @@ class RemoteConsoleWindow:
                 self.lbl_status.config(text="● CONNECTED", fg="#22C55E")
                 self.append_response(f"Connected: {msg}")
                 self.btn_send.config(state="normal")
+                self.is_connected = True
             else:
                 messagebox.showerror("Lỗi", msg)
         else:
@@ -150,6 +164,7 @@ class RemoteConsoleWindow:
             self.lbl_status.config(text="● DISCONNECTED", fg="#EF4444")
             self.btn_send.config(state="disabled")
             self.append_response("Disconnected.")
+            self.is_connected = False
 
 
     def send_command(self, event=None):

@@ -344,7 +344,7 @@ class MainWindow:
         if self.devices.is_hioki_connected():
             self.devices.get_hioki().start_integration()
             self.start_routine()
-            return
+            # return
        
         ip = self.ent_ip.get()
         port = int(self.ent_port.get())
@@ -403,32 +403,169 @@ class MainWindow:
         self.is_measuring = False
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
+        self.devices.get_hioki().stop_integration()
         
-        if self.controller:
-            self.controller.disconnect()
-            self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
+        # if self.controller:
+        #     self.controller.disconnect()
+        #     self.lbl_meter_status.config(text="● DISCONNECTED", fg=self.colors["status_off"])
 
+    # def measurement_worker(self):       
+        
+    #     sample_count = 0
+    #     current_profile = getattr(self, 'current_profile_name', 'Unknown')
+        
+    #     # Lấy danh sách các kênh đang cần đo (mặc định CH1 nếu mảng trống)
+    #     measured_channels = getattr(self, 'measured_channels', ['CH1'])
+        
+    #     # Biến đệm riêng cho chế độ mô phỏng (Tính P_avg độc lập cho từng kênh)
+    #     sim_total_power = {ch: 0.0 for ch in measured_channels}
+    #     sim_tick_count = {ch: 0 for ch in measured_channels}
+        
+    #     while self.is_measuring:
+    #         elapsed = time.time() - self.start_time
+    #         if elapsed > self.duration:
+    #             self.is_measuring = False
+    #             self.root.after(0, self.on_test_finished)
+    #             break
+
+    #         data_dict = {}
+    #         hours = elapsed / 3600.0
+            
+    #         # ==================================================
+    #         # 1. ĐỌC DỮ LIỆU TỪ MÁY ĐO THẬT (QUA DEVICE MANAGER)
+    #         # ==================================================
+    #         if not self.var_sim_mode.get() and self.devices.is_hioki_connected():
+    #             hioki = self.devices.get_hioki()
+    #             if not hioki or not hioki.is_connected:
+    #                 self.root.after(0, lambda: messagebox.showerror("Lỗi", "Mất kết nối với máy đo HIOKI!"))
+    #                 self.is_measuring = False
+    #                 break
+
+    #             data_dict = hioki.read_measurements()
+    #         # ==================================================
+    #         # 2. CHẾ ĐỘ GIẢ LẬP 
+    #         # ==================================================
+    #         else:
+    #             for ch in measured_channels:
+    #                 volt = random.uniform(-48.2, -47.8) 
+                    
+    #                 if ch == "CH1":
+    #                     # Giả lập BBU: Tiêu thụ điện ổn định, ít phụ thuộc vào tải
+    #                     curr = random.uniform(3.5, 4.0)
+                        
+    #                 elif ch == "CH2":
+    #                     # Giả lập RRU: Dao động mạnh theo kịch bản bài đo (Profile)
+    #                     if current_profile == "Full Load": curr = random.uniform(14.5, 15.5)
+    #                     elif current_profile == "Busy Hour Load": curr = random.uniform(10.0, 11.0)
+    #                     elif current_profile == "Medium Load": curr = random.uniform(7.0, 7.8)
+    #                     else: curr = random.uniform(2.0, 2.5)
+                        
+    #                 else:
+    #                     # Kênh dự phòng (CH3) nếu có
+    #                     curr = random.uniform(1.0, 1.5)
+                    
+    #                 # Thêm chút nhiễu ngẫu nhiên hệ thống cho tự nhiên
+    #                 curr += random.uniform(-0.1, 0.1) 
+                    
+    #                 p = abs(volt * curr)
+    #                 sim_tick_count[ch] += 1
+    #                 sim_total_power[ch] += p
+                    
+    #                 data_dict[ch] = {'U': abs(volt), 'I': curr, 'P': p}
+
+    #         # ==================================================
+    #         # 3. XỬ LÝ VÀ ĐẨY DỮ LIỆU LÊN GIAO DIỆN
+    #         # ==================================================
+    #         if data_dict:
+    #             # 1. Đọc và chuyển đổi kênh Combobox thành số nguyên (1 hoặc 2)
+    #             selected_text = self.cb_channel.get().strip().upper()
+    #             viewed_ch_int = 1 if "1" in selected_text else 2
+                
+    #             # 2. Đọc max_power 1 lần ở ngoài vòng lặp cho tối ưu
+    #             try:
+    #                 current_max_pwr = float(self.ent_max_pwr.get())
+    #             except ValueError:
+    #                 current_max_pwr = 1000.0
+
+    #             # 3. Đọc trạng thái Simulation 1 lần
+    #             is_sim_mode = self.var_sim_mode.get()
+
+    #             for ch_name, vals in data_dict.items():
+    #                 sample_count += 1
+    #                 u, i, p, ptav = vals.get('U', 0), vals.get('I', 0), vals.get('P', 0), vals.get('PTAV', 0)
+                    
+    #                 # Tính Công suất trung bình (P_Avg)
+    #                 if not is_sim_mode and ptav < 1e6:
+    #                     p_avg = ptav
+    #                     # wp = vals.get('PTAV', p)
+    #                     # p_avg = (wp / hours) if hours > 0 else p
+    #                 else:
+    #                     p_avg = sim_total_power[ch_name] / sim_tick_count[ch_name]
+                        
+    #                 # Đánh giá PASS/FAIL dựa trên current_max_pwr đã đọc ở trên
+    #                 eval_status = "PASS" if p <= current_max_pwr else "FAIL"
+                    
+    #                 # Gói thành Record 9 phần tử
+    #                 record = (sample_count, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), int(elapsed), 
+    #                         ch_name, f"{u:.2f}", f"{i:.2f}", f"{p:.2f}", f"{p_avg:.2f}", eval_status)
+                    
+    #                 # SỬA Ở ĐÂY: So sánh int với int (VD: 1 == 1)
+    #                 is_viewed = (ch_name == viewed_ch_int)
+                    
+    #                 # Bắn qua UI (Main Thread)
+    #                 self.root.after(0, self.update_dashboard, record, is_viewed)
+
+    #         time.sleep(self.sample_rate)
     def measurement_worker(self):       
+        import random
+        import time
+        import csv
+        import os
+        from datetime import datetime
+
+        # 1. KHÓA CHỐNG TRÙNG LUỒNG
+        if getattr(self, '_is_worker_running', False):
+            return
+        self._is_worker_running = True
         
-        sample_count = 0
         current_profile = getattr(self, 'current_profile_name', 'Unknown')
-        
-        # Lấy danh sách các kênh đang cần đo (mặc định CH1 nếu mảng trống)
         measured_channels = getattr(self, 'measured_channels', ['CH1'])
         
-        # Biến đệm riêng cho chế độ mô phỏng (Tính P_avg độc lập cho từng kênh)
         sim_total_power = {ch: 0.0 for ch in measured_channels}
         sim_tick_count = {ch: 0 for ch in measured_channels}
         
-        while self.is_measuring:
-            elapsed = time.time() - self.start_time
-            if elapsed > self.duration:
-                self.is_measuring = False
-                self.root.after(0, self.on_test_finished)
-                break
+        # 2. CHỐT CHÍNH XÁC SỐ LƯỢNG MẪU
+        total_cycles = int(self.duration / self.sample_rate)
+        if total_cycles <= 0: total_cycles = 1
+
+        cycle_count = 0  
+        self.start_time = time.time()
+        
+        # ==================================================
+        # KHỞI TẠO FILE CSV BACKUP CHỐNG CRASH
+        # ==================================================
+        if not os.path.exists("logs"):
+            os.makedirs("logs")
+            
+        csv_filename = datetime.now().strftime(f"logs/BackupLog_{self.ent_serial.get()}_%Y%m%d_%H%M%S.csv")
+        try:
+            with open(csv_filename, mode='w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                # Ghi dòng tiêu đề
+                writer.writerow(['STT', 'System Time', 'Elapsed (s)', 'Channel', 'Voltage (V)', 'Current (A)', 'Power (W)', 'P Avg (W)', 'Status'])
+        except Exception as e:
+            print(f"Không thể tạo file CSV backup: {e}")
+
+        # Mốc thời gian chuẩn bị cho chu kỳ tiếp theo (bù trừ sai số)
+        next_tick = self.start_time + self.sample_rate
+        
+        while self.is_measuring and cycle_count < total_cycles:
+            cycle_count += 1
+            
+            elapsed = int(cycle_count * self.sample_rate)
+            hours = elapsed / 3600.0
 
             data_dict = {}
-            hours = elapsed / 3600.0
             
             # ==================================================
             # 1. ĐỌC DỮ LIỆU TỪ MÁY ĐO THẬT (QUA DEVICE MANAGER)
@@ -439,33 +576,25 @@ class MainWindow:
                     self.root.after(0, lambda: messagebox.showerror("Lỗi", "Mất kết nối với máy đo HIOKI!"))
                     self.is_measuring = False
                     break
-                
-                # Trả về dict: {'CH1': {'U':.., 'I':.., 'P':.., 'WP':..}, 'CH2': {...}}
+
                 data_dict = hioki.read_measurements()
-                
             # ==================================================
-            # 2. CHẾ ĐỘ GIẢ LẬP (TẠO DỮ LIỆU CHO TỪNG KÊNH)
+            # 2. CHẾ ĐỘ GIẢ LẬP 
             # ==================================================
             else:
                 for ch in measured_channels:
                     volt = random.uniform(-48.2, -47.8) 
                     
                     if ch == "CH1":
-                        # Giả lập BBU: Tiêu thụ điện ổn định, ít phụ thuộc vào tải
                         curr = random.uniform(3.5, 4.0)
-                        
                     elif ch == "CH2":
-                        # Giả lập RRU: Dao động mạnh theo kịch bản bài đo (Profile)
                         if current_profile == "Full Load": curr = random.uniform(14.5, 15.5)
                         elif current_profile == "Busy Hour Load": curr = random.uniform(10.0, 11.0)
                         elif current_profile == "Medium Load": curr = random.uniform(7.0, 7.8)
                         else: curr = random.uniform(2.0, 2.5)
-                        
                     else:
-                        # Kênh dự phòng (CH3) nếu có
                         curr = random.uniform(1.0, 1.5)
                     
-                    # Thêm chút nhiễu ngẫu nhiên hệ thống cho tự nhiên
                     curr += random.uniform(-0.1, 0.1) 
                     
                     p = abs(volt * curr)
@@ -475,35 +604,70 @@ class MainWindow:
                     data_dict[ch] = {'U': abs(volt), 'I': curr, 'P': p}
 
             # ==================================================
-            # 3. XỬ LÝ VÀ ĐẨY DỮ LIỆU LÊN GIAO DIỆN
+            # 3. XỬ LÝ VÀ ĐẨY DỮ LIỆU LÊN GIAO DIỆN + GHI FILE CSV
             # ==================================================
             if data_dict:
-                viewed_ch = self.cb_channel.get() # Kiểm tra xem User đang chọn xem kênh nào
+                selected_text = self.cb_channel.get().strip().upper()
+                viewed_ch_int = 1 if "1" in selected_text else 2
                 
-                for ch_name, vals in data_dict.items():
-                    sample_count += 1
-                    u, i, p = vals.get('U', 0), vals.get('I', 0), vals.get('P', 0)
-                    
-                    # Tính Công suất trung bình (P_Avg)
-                    if not self.var_sim_mode.get():
-                        wp = vals.get('WP', 0)
-                        p_avg = (wp / hours) if hours > 0 else p
-                    else:
-                        p_avg = sim_total_power[ch_name] / sim_tick_count[ch_name]
+                try:
+                    current_max_pwr = float(self.ent_max_pwr.get())
+                except ValueError:
+                    current_max_pwr = 1000.0
 
-                    eval_status = "PASS" if p <= self.max_power else "FAIL"
+                is_sim_mode = self.var_sim_mode.get()
+                sys_time_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+                for ch_name, vals in data_dict.items():
+                    u, i, p, ptav = vals.get('U', 0), vals.get('I', 0), vals.get('P', 0), vals.get('PTAV', 0)
                     
-                    # Gói thành Record 9 phần tử (Có ch_name ở index 3)
-                    record = (sample_count, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), int(elapsed), 
+                    if not is_sim_mode and ptav < 1e6:
+                        p_avg = ptav
+                    else:
+                        if sim_tick_count[ch_name] > 0:
+                            p_avg = sim_total_power[ch_name] / sim_tick_count[ch_name]
+                        else:
+                            p_avg = 0
+
+                    eval_status = "PASS" if p <= current_max_pwr else "FAIL"
+                    
+                    # Gói thành Record 9 phần tử
+                    record = (cycle_count, sys_time_str, elapsed, 
                               ch_name, f"{u:.2f}", f"{i:.2f}", f"{p:.2f}", f"{p_avg:.2f}", eval_status)
                     
-                    # So sánh kênh của gói dữ liệu này với kênh Combobox đang hiển thị
-                    is_viewed = (ch_name == viewed_ch)
+                    # --- GHI REAL-TIME VÀO FILE CSV ---
+                    try:
+                        with open(csv_filename, mode='a', newline='', encoding='utf-8') as f:
+                            writer = csv.writer(f)
+                            writer.writerow(record)
+                    except Exception as e:
+                        pass # Bỏ qua lỗi nếu có file đang bị kẹt để không làm treo tool
                     
-                    # Bắn qua UI (Main Thread)
+                    # Bóc tách số từ ch_name (vd: "CH1" -> 1) để so sánh an toàn
+                    try:
+                        ch_name_int = int(str(ch_name).replace("CH", ""))
+                    except:
+                        ch_name_int = ch_name
+
+                    is_viewed = (ch_name_int == viewed_ch_int)
+                    
                     self.root.after(0, self.update_dashboard, record, is_viewed)
 
-            time.sleep(self.sample_rate)
+            # ==================================================
+            # 4. BÙ TRỪ THỜI GIAN
+            # ==================================================
+            now = time.time()
+            sleep_duration = next_tick - now
+            
+            if sleep_duration > 0:
+                time.sleep(sleep_duration)
+                
+            next_tick += self.sample_rate
+
+        # --- KẾT THÚC BÀI ĐO ---
+        self.is_measuring = False
+        self._is_worker_running = False
+        self.root.after(0, self.on_test_finished)
 
     def on_test_finished(self):
         # 1. LƯU DỮ LIỆU CỦA BÀI VỪA ĐO VÀO KHO
@@ -515,9 +679,9 @@ class MainWindow:
             })
 
         # Ngắt kết nối thiết bị sau mỗi bài
-        if self.controller:
-            self.controller.stop_integration()
-            self.controller.disconnect()
+        # if self.controller:
+        #     self.controller.stop_integration()
+        #     self.controller.disconnect()
             
         # (Tùy chọn): Tại đây có thể chèn dòng code gọi tính năng Auto-Export báo cáo 
         # file_path = f"report_{self.batch_plan[self.current_batch_index]['name']}.html"
